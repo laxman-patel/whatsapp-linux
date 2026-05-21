@@ -1,0 +1,41 @@
+import Database from 'better-sqlite3'
+import path from 'node:path'
+import { app } from 'electron'
+import { MIGRATIONS, SCHEMA_VERSION } from './schema'
+
+let db: Database.Database | null = null
+
+export function getDbPath(): string {
+  return path.join(app.getPath('userData'), 'whatsapp.db')
+}
+
+export function initDatabase(): Database.Database {
+  if (db) return db
+
+  db = new Database(getDbPath())
+  db.pragma('journal_mode = WAL')
+  db.pragma('foreign_keys = ON')
+
+  for (const sql of MIGRATIONS) {
+    db.exec(sql)
+  }
+
+  db.prepare(
+    `INSERT INTO meta (key, value) VALUES ('schema_version', ?)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+  ).run(String(SCHEMA_VERSION))
+
+  return db
+}
+
+export function getDb(): Database.Database {
+  if (!db) return initDatabase()
+  return db
+}
+
+export function clearDatabase(): void {
+  const database = getDb()
+  database.exec('DELETE FROM messages')
+  database.exec('DELETE FROM chats')
+  database.exec('DELETE FROM contacts')
+}

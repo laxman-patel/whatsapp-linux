@@ -12,7 +12,7 @@ This is **not** an official WhatsApp client. It uses the unofficial [Baileys](ht
 |-------|--------|
 | **0 — Scaffold** | Mock conversations, filter toggle, IPC bridge, chatcn UI |
 | **1 — Baileys session** | QR auth, reconnect, session in `~/.config/whatsapp-desktop/baileys-auth` |
-| 2 — Chats & messages | SQLite, live sync |
+| **2 — Chats & messages** | SQLite, live sync, send/receive text |
 | 3 — Media | Download, send/receive |
 | 4 — Polish | Notifications, AppImage, read receipts |
 
@@ -30,7 +30,13 @@ This is **not** an official WhatsApp client. It uses the unofficial [Baileys](ht
 - Session persisted under `~/.config/whatsapp-desktop/baileys-auth/`
 - Auto-reconnect on launch and after disconnects
 - Connection error UI with retry / clear session
-- Mock chats still shown after connect (real sync in Phase 2)
+
+### Phase 2
+- SQLite database at `~/.config/whatsapp-desktop/whatsapp.db`
+- Real conversations and messages from Baileys events
+- Send and receive text in DMs and groups
+- Group sender names on incoming messages
+- Message pagination (50 per page, scroll-up for older)
 
 ## Requirements
 

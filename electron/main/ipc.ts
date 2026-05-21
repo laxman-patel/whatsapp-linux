@@ -1,4 +1,4 @@
-import { ipcMain, BrowserWindow } from 'electron'
+import { ipcMain } from 'electron'
 import Store from 'electron-store'
 import type { ChatFilter, ColorScheme } from '../../src/shared/ipc'
 import { IPC_CHANNELS } from '../../src/shared/ipc'
@@ -7,12 +7,14 @@ import {
   logoutWhatsApp,
   retryWhatsApp,
 } from './connection-bridge'
+import { getSocket } from './baileys/client'
+import { sendTextMessage } from './baileys/send'
 import {
-  getMockGroupMeta,
-  getMockMessages,
-  listMockChats,
-  sendMockText,
-} from './mock-data'
+  listChatsFromDb,
+  listMessagesFromDb,
+  setGroupParticipantCount,
+} from './db/repositories'
+import { chatJidIsGroup } from './baileys/message-utils'
 
 interface StoredSettings extends Record<string, ChatFilter | ColorScheme> {
   chatFilter: ChatFilter
@@ -22,12 +24,6 @@ interface StoredSettings extends Record<string, ChatFilter | ColorScheme> {
 const store = new Store<StoredSettings>({
   defaults: { chatFilter: 'all', colorScheme: 'system' },
 })
-
-function broadcast(channel: string, ...args: unknown[]) {
-  for (const win of BrowserWindow.getAllWindows()) {
-    win.webContents.send(channel, ...args)
-  }
-}
 
 export function registerIpcHandlers() {
   ipcMain.handle(IPC_CHANNELS.settingsGet, () => ({
@@ -55,21 +51,30 @@ export function registerIpcHandlers() {
 
   ipcMain.handle(
     IPC_CHANNELS.chatsList,
-    (_, filter: ChatFilter, search?: string) => listMockChats(filter, search),
+    (_, filter: ChatFilter, search?: string) => listChatsFromDb(filter, search),
   )
 
-  ipcMain.handle(IPC_CHANNELS.chatOpen, (_, jid: string) => {
-    return getMockGroupMeta(jid) ?? null
+  ipcMain.handle(IPC_CHANNELS.chatOpen, async (_, jid: string) => {
+    if (!chatJidIsGroup(jid)) return null
+
+    const sock = getSocket()
+    if (!sock) return null
+
+    try {
+      const meta = await sock.groupMetadata(jid)
+      const count = meta.participants?.length ?? 0
+      setGroupParticipantCount(jid, count)
+      return { participantCount: count }
+    } catch {
+      return null
+    }
   })
 
-  ipcMain.handle(IPC_CHANNELS.messagesList, (_, jid: string) => ({
-    messages: getMockMessages(jid),
-  }))
+  ipcMain.handle(IPC_CHANNELS.messagesList, (_, jid: string, cursor?: string) =>
+    listMessagesFromDb(jid, cursor),
+  )
 
-  ipcMain.handle(IPC_CHANNELS.messagesSendText, (_, jid: string, text: string) => {
-    const message = sendMockText(jid, text)
-    broadcast(IPC_CHANNELS.messagesUpdated, jid)
-    broadcast(IPC_CHANNELS.chatsUpdated)
-    return message
-  })
+  ipcMain.handle(IPC_CHANNELS.messagesSendText, async (_, jid: string, text: string) =>
+    sendTextMessage(jid, text),
+  )
 }

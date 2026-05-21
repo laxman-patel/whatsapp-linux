@@ -1,6 +1,7 @@
 import { app, BrowserWindow, shell } from 'electron'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
+import { initDatabase } from './db'
 import { registerIpcHandlers } from './ipc'
 import { initConnectionBridge, startWhatsApp } from './connection-bridge'
 
@@ -57,6 +58,7 @@ async function createWindow() {
 }
 
 app.whenReady().then(() => {
+  initDatabase()
   registerIpcHandlers()
   initConnectionBridge()
   void startWhatsApp()

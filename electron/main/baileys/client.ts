@@ -11,6 +11,10 @@ import fs from 'node:fs/promises'
 import { app } from 'electron'
 import QRCode from 'qrcode'
 import type { ConnectionStatus } from '../../../src/shared/ipc'
+import { IPC_CHANNELS } from '../../../src/shared/ipc'
+import { broadcast } from '../broadcast'
+import { clearDatabase } from '../db'
+import { registerBaileysHandlers } from './handlers'
 
 export interface ConnectionPayload {
   status: ConnectionStatus
@@ -79,9 +83,11 @@ export async function startWhatsApp(): Promise<void> {
       browser: ['WhatsApp Desktop', 'Linux', '1.0.0'],
       syncFullHistory: false,
       markOnlineOnConnect: false,
+      getMessage: async () => undefined,
     })
 
     socket = sock
+    registerBaileysHandlers(sock)
     sock.ev.on('creds.update', saveCreds)
 
     sock.ev.on('connection.update', async (update) => {
@@ -99,6 +105,7 @@ export async function startWhatsApp(): Promise<void> {
 
       if (connection === 'open') {
         setState({ status: 'connected' })
+        broadcast(IPC_CHANNELS.chatsUpdated)
       }
 
       if (connection === 'close') {
@@ -160,6 +167,8 @@ export async function logoutWhatsApp(): Promise<void> {
   } catch {
     // ignore missing auth dir
   }
+
+  clearDatabase()
 
   setState({ status: 'connecting', message: 'Starting fresh session…' })
   await startWhatsApp()
