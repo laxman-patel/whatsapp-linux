@@ -1,7 +1,7 @@
 {
   "name": "whatszapp",
   "version": "0.1.0",
-  "description": "WhatsZapp — fast, clean, programmable WhatsApp desktop client for Linux and Windows",
+  "description": "WhatsZapp — AI-native WhatsApp desktop for Linux and Windows",
   "main": "dist-electron/main/index.js",
   "author": "Laxman",
   "license": "MIT",

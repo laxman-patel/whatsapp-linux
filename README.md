@@ -1,6 +1,8 @@
 # WhatsZapp
 
-**A fast, clean, programmable WhatsApp client for Linux and Windows — built because nothing else is.**
+**Your WhatsApp — rebuilt for humans, and the AI you actually picked.**
+
+WhatsZapp is an **AI-native** desktop client for Linux and Windows. Every message lands in a local SQLite database your scripts, agents, and tools can actually use — without Meta's chatbot camping in your inbox.
 
 ![WhatsZapp screenshot](screenshot.png)
 
@@ -8,17 +10,17 @@
 
 ## Why WhatsZapp?
 
-### 1. There is no real WhatsApp desktop client for Linux
-Meta ships WhatsApp Web and a Windows/macOS app. Linux users are left with a browser tab that eats RAM, can't run in the background as a tray app, has no notifications that survive a browser restart, and feels nothing like a native application. WhatsZapp is a proper desktop app — frameless window, system dark mode, SQLite-backed message history, instant startup.
+### Linux users got the browser-tab treatment
+Meta ships a proper app for Windows and Mac. On Linux? Another hungry Chrome tab that forgets you exist, can't live in the tray, and eats RAM like it's training a model. WhatsZapp is a real desktop app — fast startup, dark mode that follows your system, and a window that feels like it belongs on your machine.
 
-### 2. WhatsApp's "Meta AI" gets in the way
-Meta's AI feature occupies prime UI real estate, intercepts messages, and offers zero value for anyone who wants a fast messaging client. WhatsZapp has no AI overlay, no chat-with-AI prompt at the top of your inbox, and no suggested replies you didn't ask for.
+### Meta stuffed AI where your chats should be
+There's a bot in your inbox now. Suggested replies. "Chat with AI" banners. Stuff you never installed and can't turn off. WhatsZapp has **zero** of that. When you want AI, you'll bring your own — on your terms, with your keys, reading *your* local database.
 
-### 3. You can't automate or prioritize anything in the official app
-Read receipts, priority contacts, filtered views, message search — all locked inside a walled garden. WhatsZapp exposes your messages through a local SQLite database so you can query, script, and build on top of them. Future: programmatic send, webhooks, reply-from-CLI.
+### Your messages shouldn't be trapped in an app
+Want to search every group chat from last month? Pipe unread counts into a script? Let an agent draft a reply? Official WhatsApp says no. WhatsZapp stores everything in plain SQLite so the fun part — automating, filtering, building — is actually possible. (Programmatic send, webhooks, and CLI replies are on the way.)
 
-### 4. Backups
-The official app stores nothing accessible on desktop. WhatsZapp writes every message to a plain SQLite file you can `cp`, encrypt, or sync however you want (see [Data & privacy](#data--privacy)).
+### Backups you can hold in your hand
+The official desktop app doesn't give you a file you can copy. WhatsZapp does: one SQLite database you can back up, encrypt, sync to your NAS, or email to Future You. See [Data & privacy](#data--privacy).
 
 ---
 
