@@ -6,7 +6,14 @@ import {
   CURRENT_USER,
   messageToChatcn,
 } from '@/lib/adapters/baileys-to-chatcn'
-import { useAuth, useChats, useMessages, useSettings } from '@/hooks/useChats'
+import {
+  useAuth,
+  useChats,
+  useMessages,
+  useSettings,
+  useSyncProgress,
+} from '@/hooks/useChats'
+import { SyncProgressBanner } from '@/components/SyncProgressBanner'
 import { ThemeToggle } from '@/components/ThemeToggle'
 import type { ChatFilter, ColorScheme } from '@/shared/ipc'
 
@@ -30,6 +37,7 @@ function TitleBar({
 function App() {
   const { chatFilter, setChatFilter, colorScheme, setColorScheme, loaded } = useSettings()
   const { status, message, qrDataUrl, retry, logout, isConnected } = useAuth()
+  const sync = useSyncProgress()
   const [search, setSearch] = useState('')
   const [activeJid, setActiveJid] = useState<string | undefined>()
   const [headerSubtitle, setHeaderSubtitle] = useState<string | undefined>()
@@ -101,7 +109,9 @@ function App() {
     <div className="flex h-screen flex-col overflow-hidden">
       <TitleBar colorScheme={colorScheme} onColorSchemeChange={setColorScheme} />
 
-      <div className="min-h-0 flex-1">
+      <div className="flex min-h-0 flex-1 flex-col">
+        {isConnected && <SyncProgressBanner sync={sync} />}
+        <div className="min-h-0 flex-1">
         {isConnected ? (
           <WhatsAppMessenger
             currentUser={CURRENT_USER}
@@ -126,6 +136,7 @@ function App() {
             onLogout={() => void logout()}
           />
         )}
+        </div>
       </div>
     </div>
   )

@@ -15,6 +15,7 @@ import { IPC_CHANNELS } from '../../../src/shared/ipc'
 import { broadcast } from '../broadcast'
 import { clearDatabase } from '../db'
 import { registerBaileysHandlers } from './handlers'
+import { beginSync, resetSyncProgress, scheduleSyncIdleFallback } from '../sync-progress'
 
 export interface ConnectionPayload {
   status: ConnectionStatus
@@ -105,6 +106,8 @@ export async function startWhatsApp(): Promise<void> {
 
       if (connection === 'open') {
         setState({ status: 'connected' })
+        beginSync()
+        scheduleSyncIdleFallback()
         broadcast(IPC_CHANNELS.chatsUpdated)
       }
 
@@ -169,6 +172,7 @@ export async function logoutWhatsApp(): Promise<void> {
   }
 
   clearDatabase()
+  resetSyncProgress()
 
   setState({ status: 'connecting', message: 'Starting fresh session…' })
   await startWhatsApp()

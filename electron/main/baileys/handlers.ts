@@ -1,7 +1,5 @@
 import type { BaileysEventMap, WASocket } from '@whiskeysockets/baileys'
 import { jidNormalizedUser } from '@whiskeysockets/baileys'
-import { IPC_CHANNELS } from '../../../src/shared/ipc'
-import { broadcast } from '../broadcast'
 import {
   deleteChats,
   setGroupParticipantCount,
@@ -11,6 +9,13 @@ import {
   upsertMessageFromBaileys,
   upsertMessagesFromBaileys,
 } from '../db/repositories'
+import {
+  beginSync,
+  onHistorySyncComplete,
+  recordHistoryChunk,
+  scheduleChatsNotify,
+  scheduleMessagesNotify,
+} from '../sync-progress'
 
 let meId = ''
 
@@ -21,41 +26,59 @@ export function getMeId(): string {
 export function registerBaileysHandlers(sock: WASocket): void {
   meId = jidNormalizedUser(sock.user?.id ?? 'me@s.whatsapp.net')
 
-  const notifyChats = () => broadcast(IPC_CHANNELS.chatsUpdated)
-  const notifyMessages = (jid: string) =>
-    broadcast(IPC_CHANNELS.messagesUpdated, jid)
-
   sock.ev.on('messaging-history.set', (data) => {
     try {
+      const msgCount = data.messages?.length ?? 0
+      const chatCount = data.chats?.length ?? 0
+      const contactCount = data.contacts?.length ?? 0
+
       if (data.contacts?.length) upsertContacts(data.contacts)
       if (data.chats?.length) upsertChatsFromBaileys(data.chats)
-      if (data.messages?.length) upsertMessagesFromBaileys(data.messages, meId)
-      notifyChats()
+      const inserted = data.messages?.length
+        ? upsertMessagesFromBaileys(data.messages, meId)
+        : 0
+
+      recordHistoryChunk({
+        chats: chatCount,
+        messages: inserted || msgCount,
+        contacts: contactCount,
+        progress: data.progress ?? undefined,
+        isLatest: data.isLatest ?? undefined,
+      })
+
+      scheduleChatsNotify()
     } catch (err) {
       console.error('[baileys] messaging-history.set failed:', err)
     }
   })
 
+  sock.ev.on('messaging-history.status', ({ status }) => {
+    if (status === 'complete') {
+      onHistorySyncComplete()
+      scheduleChatsNotify(true)
+    }
+  })
+
   sock.ev.on('chats.upsert', (chats) => {
     upsertChatsFromBaileys(chats)
-    notifyChats()
+    scheduleChatsNotify()
   })
 
   sock.ev.on('chats.update', (updates) => {
     for (const update of updates) {
       if (update.id) upsertChatFromBaileys(update as Parameters<typeof upsertChatFromBaileys>[0])
     }
-    notifyChats()
+    scheduleChatsNotify()
   })
 
   sock.ev.on('chats.delete', (jids) => {
     deleteChats(jids)
-    notifyChats()
+    scheduleChatsNotify(true)
   })
 
   sock.ev.on('contacts.upsert', (contacts) => {
     upsertContacts(contacts)
-    notifyChats()
+    scheduleChatsNotify()
   })
 
   sock.ev.on('contacts.update', (updates) => {
@@ -69,16 +92,16 @@ export function registerBaileysHandlers(sock: WASocket): void {
           verifiedName: c.verifiedName,
         })),
     )
-    notifyChats()
+    scheduleChatsNotify()
   })
 
   sock.ev.on('messages.upsert', ({ messages }) => {
     try {
       for (const msg of messages) {
         const record = upsertMessageFromBaileys(msg, meId)
-        if (record) notifyMessages(record.chatJid)
+        if (record) scheduleMessagesNotify(record.chatJid)
       }
-      notifyChats()
+      scheduleChatsNotify()
     } catch (err) {
       console.error('[baileys] messages.upsert failed:', err)
     }
@@ -87,9 +110,8 @@ export function registerBaileysHandlers(sock: WASocket): void {
   sock.ev.on('messages.update', (updates) => {
     for (const { key, update } of updates) {
       if (!key.remoteJid || !key.id) continue
-      // Status updates handled in Phase 4; still refresh thread
       if (update.status !== undefined) {
-        notifyMessages(key.remoteJid)
+        scheduleMessagesNotify(key.remoteJid)
       }
     }
   })
@@ -98,7 +120,7 @@ export function registerBaileysHandlers(sock: WASocket): void {
     for (const g of groups) {
       setGroupParticipantCount(g.id, g.participants?.length ?? 0)
     }
-    notifyChats()
+    scheduleChatsNotify()
   })
 }
 

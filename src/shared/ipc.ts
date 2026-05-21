@@ -40,6 +40,18 @@ export interface ConnectionPayload {
   message?: string
 }
 
+export type SyncPhase = 'idle' | 'history' | 'contacts' | 'messages' | 'finalizing'
+
+export interface SyncProgressPayload {
+  active: boolean
+  progress: number
+  phase: SyncPhase
+  message: string
+  chatsSynced?: number
+  messagesSynced?: number
+  contactsSynced?: number
+}
+
 export interface IpcApi {
   getSettings: () => Promise<AppSettings>
   setChatFilter: (filter: ChatFilter) => Promise<void>
@@ -54,7 +66,9 @@ export interface IpcApi {
     nextCursor?: string
   }>
   sendText: (jid: string, text: string) => Promise<MessageRecord>
+  getSyncProgress: () => Promise<SyncProgressPayload>
   onConnectionUpdate: (cb: (payload: ConnectionPayload) => void) => () => void
+  onSyncUpdate: (cb: (payload: SyncProgressPayload) => void) => () => void
   onAuthQr: (cb: (dataUrl: string) => void) => () => void
   onChatsUpdated: (cb: () => void) => () => void
   onMessagesUpdated: (cb: (jid: string) => void) => () => void
@@ -73,6 +87,8 @@ export const IPC_CHANNELS = {
   messagesList: 'messages:list',
   messagesSendText: 'messages:send-text',
   connectionUpdate: 'connection:update',
+  syncGet: 'sync:get',
+  syncUpdate: 'sync:update',
   chatsUpdated: 'chats:updated',
   messagesUpdated: 'messages:updated',
 } as const

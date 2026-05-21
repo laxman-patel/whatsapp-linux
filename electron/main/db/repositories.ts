@@ -220,11 +220,81 @@ export function upsertMessageFromBaileys(msg: WAMessage, meId: string): MessageR
   })
 }
 
-export function upsertMessagesFromBaileys(messages: WAMessage[], meId: string): void {
+export function upsertMessagesFromBaileys(messages: WAMessage[], meId: string): number {
+  if (messages.length === 0) return 0
+
+  const contactNames = getContactNameMap()
+  const insertMsg = getDb().prepare(
+    `INSERT INTO messages (id, chat_jid, sender_id, sender_name, text, timestamp, status, is_from_me)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET
+       text = COALESCE(excluded.text, messages.text),
+       status = COALESCE(excluded.status, messages.status),
+       sender_name = COALESCE(excluded.sender_name, messages.sender_name)`,
+  )
+
+  const chatLast = new Map<
+    string,
+    { preview: string; timestamp: number }
+  >()
+
+  let inserted = 0
+
   const tx = getDb().transaction((msgs: WAMessage[]) => {
-    for (const msg of msgs) upsertMessageFromBaileys(msg, meId)
+    const jidsNeeded = new Set<string>()
+
+    for (const msg of msgs) {
+      const chatJid = resolveChatJid(msg)
+      if (!isRenderableChatJid(chatJid)) continue
+
+      const text = getMessageText(msg)
+      if (!text && !msg.key.fromMe && !msg.message) continue
+
+      jidsNeeded.add(chatJid)
+
+      const id = messageIdFromKey(msg)
+      const senderId = resolveSenderId(msg, meId)
+      const senderName = resolveSenderName(msg, meId, contactNames)
+      const timestamp = getMessageTimestamp(msg)
+      const isFromMe = msg.key.fromMe ? 1 : 0
+      const rawStatus =
+        typeof msg.status === 'number' ? msg.status : undefined
+      const status = msg.key.fromMe ? mapReceiptStatus(rawStatus) : undefined
+
+      insertMsg.run(
+        id,
+        chatJid,
+        senderId,
+        senderName,
+        text ?? null,
+        timestamp,
+        status ?? null,
+        isFromMe,
+      )
+      inserted++
+
+      const preview = formatLastMessagePreview(
+        text,
+        senderName,
+        chatJidIsGroup(chatJid),
+        Boolean(isFromMe),
+      )
+      const prev = chatLast.get(chatJid)
+      if (!prev || timestamp >= prev.timestamp) {
+        chatLast.set(chatJid, { preview, timestamp })
+      }
+    }
+
+    for (const jid of jidsNeeded) {
+      ensureChatRow(jid, contactNames)
+    }
+    for (const [jid, last] of chatLast) {
+      ensureChatRow(jid, contactNames, last.preview, last.timestamp)
+    }
   })
+
   tx(messages)
+  return inserted
 }
 
 function formatLastMessagePreview(

@@ -5,6 +5,7 @@ import type {
   ColorScheme,
   ConnectionPayload,
   MessageRecord,
+  SyncProgressPayload,
 } from '@/shared/ipc'
 
 function resolveDark(scheme: ColorScheme): boolean {
@@ -98,6 +99,24 @@ export function useMessages(jid: string | undefined) {
   }, [jid, refresh])
 
   return { messages, refresh }
+}
+
+const IDLE_SYNC: SyncProgressPayload = {
+  active: false,
+  progress: 100,
+  phase: 'idle',
+  message: '',
+}
+
+export function useSyncProgress() {
+  const [sync, setSync] = useState<SyncProgressPayload>(IDLE_SYNC)
+
+  useEffect(() => {
+    window.api.getSyncProgress().then(setSync)
+    return window.api.onSyncUpdate(setSync)
+  }, [])
+
+  return sync
 }
 
 export function useAuth() {

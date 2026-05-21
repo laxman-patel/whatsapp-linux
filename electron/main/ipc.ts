@@ -15,6 +15,7 @@ import {
   setGroupParticipantCount,
 } from './db/repositories'
 import { chatJidIsGroup } from './baileys/message-utils'
+import { getSyncProgress } from './sync-progress'
 
 interface StoredSettings extends Record<string, ChatFilter | ColorScheme> {
   chatFilter: ChatFilter
@@ -40,6 +41,8 @@ export function registerIpcHandlers() {
   })
 
   ipcMain.handle(IPC_CHANNELS.authStatus, () => getConnectionState())
+
+  ipcMain.handle(IPC_CHANNELS.syncGet, () => getSyncProgress())
 
   ipcMain.handle(IPC_CHANNELS.authLogout, async () => {
     await logoutWhatsApp()
