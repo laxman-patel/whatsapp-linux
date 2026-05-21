@@ -28,7 +28,7 @@ function TitleBar({
 }) {
   return (
     <div className="titlebar relative flex h-8 shrink-0 items-center justify-center border-b border-[var(--titlebar-border)] bg-[var(--titlebar-bg)] px-3 text-[12px] font-medium text-[var(--titlebar-text)]">
-      <span>WhatsApp Desktop</span>
+      <span>WhatsZapp</span>
       <div className="absolute right-2 flex items-center gap-1">
         <button
           type="button"

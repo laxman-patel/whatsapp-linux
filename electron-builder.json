@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
-  "appId": "com.laxman.zap",
-  "productName": "Zap",
+  "appId": "com.laxman.whatszapp",
+  "productName": "WhatsZapp",
   "asar": true,
   "directories": {
     "output": "release/${version}"
@@ -17,8 +17,8 @@
     "category": "Network",
     "artifactName": "${productName}-${version}-linux-${arch}.${ext}",
     "desktop": {
-      "Name": "Zap",
-      "Comment": "Fast, clean WhatsApp desktop client",
+      "Name": "WhatsZapp",
+      "Comment": "Fast, clean WhatsApp desktop client for Linux and Windows",
       "Categories": "Network;InstantMessaging;"
     }
   },

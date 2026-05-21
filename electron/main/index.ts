@@ -25,6 +25,15 @@ protocol.registerSchemesAsPrivileged([
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
+// Keep the same config folder across product renames (whatsapp-desktop → Zap → WhatsZapp).
+const userDataParent =
+  process.platform === 'win32'
+    ? app.getPath('appData')
+    : process.platform === 'darwin'
+      ? path.join(app.getPath('home'), 'Library', 'Application Support')
+      : path.join(app.getPath('home'), '.config')
+app.setPath('userData', path.join(userDataParent, 'whatsapp-desktop'))
+
 process.env.APP_ROOT = path.join(__dirname, '../..')
 
 export const MAIN_DIST = path.join(process.env.APP_ROOT, 'dist-electron')
@@ -46,7 +55,7 @@ const indexHtml = path.join(RENDERER_DIST, 'index.html')
 
 async function createWindow() {
   win = new BrowserWindow({
-    title: 'WhatsApp Desktop',
+    title: 'WhatsZapp',
     width: 1100,
     height: 720,
     minWidth: 800,
