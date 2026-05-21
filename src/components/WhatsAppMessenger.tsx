@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react'
-import { Search } from 'lucide-react'
+import { Loader2, RefreshCw, Search } from 'lucide-react'
 import { Virtuoso } from 'react-virtuoso'
 import {
   ChatProvider,
@@ -12,7 +12,7 @@ import {
 } from '@/components/ui/chat'
 import { ChatFilterToggle } from '@/components/ChatFilterToggle'
 import { cn } from '@/lib/utils'
-import type { ChatFilter } from '@/shared/ipc'
+import type { ChatFilter, SyncProgressPayload } from '@/shared/ipc'
 
 interface WhatsAppMessengerProps {
   currentUser: { id: string; name: string }
@@ -26,7 +26,47 @@ interface WhatsAppMessengerProps {
   search: string
   onSearchChange: (search: string) => void
   headerSubtitle?: string
+  sync: SyncProgressPayload
+  onTriggerResync: () => void
   className?: string
+}
+
+function SyncIconButton({
+  sync,
+  onClick,
+}: {
+  sync: SyncProgressPayload
+  onClick: () => void
+}) {
+  const active = sync.active
+  const progress = Math.max(0, Math.min(100, sync.progress))
+  const messages = sync.messagesSynced ?? 0
+
+  const tooltip = active
+    ? `Syncing… ${progress}%${messages > 0 ? ` · ${messages.toLocaleString()} messages` : ''}`
+    : 'Refresh chats'
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={active}
+      aria-label={tooltip}
+      title={tooltip}
+      className={cn(
+        'flex size-7 shrink-0 items-center justify-center rounded-full text-[var(--chat-text-secondary)] transition-colors',
+        active
+          ? 'cursor-progress text-[#007AFF]'
+          : 'hover:bg-[var(--chat-accent-soft)] hover:text-[var(--chat-text-primary)]',
+      )}
+    >
+      {active ? (
+        <Loader2 className="size-4 animate-spin" />
+      ) : (
+        <RefreshCw className="size-3.5" />
+      )}
+    </button>
+  )
 }
 
 export function WhatsAppMessenger({
@@ -41,6 +81,8 @@ export function WhatsAppMessenger({
   search,
   onSearchChange,
   headerSubtitle,
+  sync,
+  onTriggerResync,
   className,
 }: WhatsAppMessengerProps) {
   const activeConvo = conversations.find((c) => c.id === activeConversationId)
@@ -85,6 +127,7 @@ export function WhatsAppMessenger({
             <span className="text-[15px] font-semibold text-[var(--chat-text-primary)]">
               Messages
             </span>
+            <SyncIconButton sync={sync} onClick={onTriggerResync} />
           </div>
 
           <div className="px-3 pb-2">
@@ -122,8 +165,20 @@ export function WhatsAppMessenger({
                 title={activeConvo.title}
                 subtitle={headerSubtitle}
                 avatar={
-                  <div className="flex size-10 items-center justify-center rounded-full bg-[var(--chat-bubble-incoming)] text-sm font-semibold text-[var(--chat-text-primary)]">
-                    {activeConvo.title.charAt(0).toUpperCase()}
+                  <div className="flex size-10 items-center justify-center overflow-hidden rounded-full bg-[var(--chat-bubble-incoming)] text-sm font-semibold text-[var(--chat-text-primary)]">
+                    {activeConvo.avatar ? (
+                      <img
+                        src={activeConvo.avatar}
+                        alt={activeConvo.title}
+                        className="size-full object-cover"
+                        draggable={false}
+                        onError={(e) => {
+                          ;(e.target as HTMLImageElement).style.display = 'none'
+                        }}
+                      />
+                    ) : (
+                      activeConvo.title.charAt(0).toUpperCase()
+                    )}
                   </div>
                 }
               />

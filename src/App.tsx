@@ -13,7 +13,6 @@ import {
   useSettings,
   useSyncProgress,
 } from '@/hooks/useChats'
-import { SyncProgressBanner } from '@/components/SyncProgressBanner'
 import { ThemeToggle } from '@/components/ThemeToggle'
 import type { ChatFilter, ColorScheme } from '@/shared/ipc'
 import { LogOut } from 'lucide-react'
@@ -80,6 +79,10 @@ function App() {
   const handleSelectConversation = useCallback(
     async (jid: string) => {
       setActiveJid(jid)
+      // Mark read + register as the active chat so live messages don't
+      // bump the unread badge for the chat you're already looking at.
+      void window.api.setActiveChat(jid)
+      void window.api.markChatRead(jid)
       const chat = chats.find((c) => c.jid === jid)
       if (chat?.isGroup) {
         const meta = await window.api.openChat(jid)
@@ -94,6 +97,14 @@ function App() {
     },
     [chats],
   )
+
+  useEffect(() => {
+    void window.api.setActiveChat(activeJid ?? null)
+  }, [activeJid])
+
+  const handleTriggerResync = useCallback(() => {
+    void window.api.triggerResync()
+  }, [])
 
   const handleSend = useCallback(
     async (text: string) => {
@@ -147,6 +158,8 @@ function App() {
             search={search}
             onSearchChange={setSearch}
             headerSubtitle={headerSubtitle}
+            sync={sync}
+            onTriggerResync={handleTriggerResync}
             className="h-full"
           />
         ) : (
@@ -159,7 +172,6 @@ function App() {
           />
         )}
       </div>
-      {isConnected && <SyncProgressBanner sync={sync} />}
     </div>
   )
 }

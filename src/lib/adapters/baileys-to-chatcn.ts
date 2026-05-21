@@ -18,6 +18,7 @@ export function chatSummaryToSidebar(convo: ChatSummary) {
   return {
     id: convo.jid,
     title: convo.title,
+    avatar: convo.avatarUrl,
     lastMessage: convo.lastMessage,
     lastMessageTime: convo.lastMessageTime
       ? formatChatTime(convo.lastMessageTime)

@@ -2,12 +2,15 @@ import type { BaileysEventMap, WASocket } from '@whiskeysockets/baileys'
 import { jidNormalizedUser } from '@whiskeysockets/baileys'
 import {
   deleteChats,
+  incrementChatUnread,
   upsertChatFromBaileys,
   upsertChatsFromBaileys,
   upsertContacts,
   upsertGroupInfo,
   upsertMessageFromBaileys,
 } from '../db/repositories'
+import { getActiveChat } from '../active-chat'
+import { queueAvatarFetches } from './avatars'
 import {
   onHistorySyncComplete,
   scheduleChatsNotify,
@@ -36,6 +39,10 @@ export function registerBaileysHandlers(sock: WASocket): void {
       isLatest: data.isLatest ?? undefined,
     })
 
+    if (data.chats?.length) {
+      queueAvatarFetches(data.chats.map((c) => c.id).filter(Boolean) as string[])
+    }
+
     if (data.isLatest) {
       onHistorySyncComplete()
       scheduleChatsNotify(true)
@@ -44,6 +51,7 @@ export function registerBaileysHandlers(sock: WASocket): void {
 
   sock.ev.on('chats.upsert', (chats) => {
     upsertChatsFromBaileys(chats)
+    queueAvatarFetches(chats.map((c) => c.id).filter(Boolean) as string[])
     scheduleChatsNotify()
   })
 
@@ -78,11 +86,24 @@ export function registerBaileysHandlers(sock: WASocket): void {
     scheduleChatsNotify()
   })
 
-  sock.ev.on('messages.upsert', ({ messages }) => {
+  sock.ev.on('messages.upsert', ({ messages, type }) => {
     try {
+      const activeJid = getActiveChat()
       for (const msg of messages) {
         const record = upsertMessageFromBaileys(msg, meId)
-        if (record) scheduleMessagesNotify(record.chatJid)
+        if (!record) continue
+        scheduleMessagesNotify(record.chatJid)
+
+        // Only bump the unread badge for genuinely-new live notifications
+        // (type === 'notify'), and only when the user isn't already viewing
+        // that chat. History/append types should never inflate the badge.
+        if (
+          type === 'notify' &&
+          !record.isFromMe &&
+          record.chatJid !== activeJid
+        ) {
+          incrementChatUnread(record.chatJid)
+        }
       }
       scheduleChatsNotify()
     } catch (err) {

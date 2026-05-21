@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 1
+export const SCHEMA_VERSION = 2
 
 export const MIGRATIONS: string[] = [
   `CREATE TABLE IF NOT EXISTS chats (
@@ -9,6 +9,7 @@ export const MIGRATIONS: string[] = [
     last_message_time INTEGER,
     unread_count INTEGER NOT NULL DEFAULT 0,
     participant_count INTEGER,
+    avatar_path TEXT,
     updated_at INTEGER NOT NULL
   )`,
   `CREATE TABLE IF NOT EXISTS contacts (

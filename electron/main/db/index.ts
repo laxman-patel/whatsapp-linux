@@ -27,6 +27,9 @@ export function initDatabase(): Database.Database {
     db.exec(sql)
   }
 
+  // Idempotent schema upgrades for already-existing databases.
+  applyIncrementalMigrations(db)
+
   db.prepare(
     `INSERT INTO meta (key, value) VALUES ('schema_version', ?)
      ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
@@ -45,4 +48,19 @@ export function clearDatabase(): void {
   database.exec('DELETE FROM messages')
   database.exec('DELETE FROM chats')
   database.exec('DELETE FROM contacts')
+}
+
+function applyIncrementalMigrations(db: Database.Database): void {
+  // v1 -> v2: avatar_path column on chats.
+  try {
+    db.exec('ALTER TABLE chats ADD COLUMN avatar_path TEXT')
+  } catch (err) {
+    // Column already exists; safe to ignore.
+    if (
+      err instanceof Error &&
+      !/duplicate column name/i.test(err.message)
+    ) {
+      throw err
+    }
+  }
 }

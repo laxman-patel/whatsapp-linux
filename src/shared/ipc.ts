@@ -16,6 +16,7 @@ export interface ChatSummary {
   lastMessage?: string
   lastMessageTime?: number
   unreadCount: number
+  /** Custom scheme URL (wa-avatar://...) when a profile picture has been cached locally. */
   avatarUrl?: string
 }
 
@@ -70,6 +71,9 @@ export interface IpcApi {
     nextCursor?: string
   }>
   sendText: (jid: string, text: string) => Promise<MessageRecord>
+  markChatRead: (jid: string) => Promise<void>
+  setActiveChat: (jid: string | null) => Promise<void>
+  triggerResync: () => Promise<void>
   getSyncProgress: () => Promise<SyncProgressPayload>
   onConnectionUpdate: (cb: (payload: ConnectionPayload) => void) => () => void
   onSyncUpdate: (cb: (payload: SyncProgressPayload) => void) => () => void
@@ -90,6 +94,9 @@ export const IPC_CHANNELS = {
   chatOpen: 'chat:open',
   messagesList: 'messages:list',
   messagesSendText: 'messages:send-text',
+  chatMarkRead: 'chat:mark-read',
+  chatSetActive: 'chat:set-active',
+  syncTrigger: 'sync:trigger',
   connectionUpdate: 'connection:update',
   syncGet: 'sync:get',
   syncUpdate: 'sync:update',

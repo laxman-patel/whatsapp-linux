@@ -1,9 +1,18 @@
-import { app, BrowserWindow, shell } from 'electron'
+import { app, BrowserWindow, protocol, shell } from 'electron'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import { initDatabase } from './db'
 import { registerIpcHandlers } from './ipc'
 import { initConnectionBridge, startWhatsApp } from './connection-bridge'
+import { registerAvatarProtocol } from './baileys/avatars'
+
+// Custom scheme used to serve cached profile pictures to the renderer.
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: 'wa-avatar',
+    privileges: { standard: true, supportFetchAPI: true, secure: true, bypassCSP: true },
+  },
+])
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -59,6 +68,7 @@ async function createWindow() {
 
 app.whenReady().then(() => {
   initDatabase()
+  registerAvatarProtocol()
   registerIpcHandlers()
   initConnectionBridge()
   void startWhatsApp()

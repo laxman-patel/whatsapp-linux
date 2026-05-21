@@ -11,11 +11,20 @@ import { getSocket } from './baileys/client'
 import { sendTextMessage } from './baileys/send'
 import {
   listChatsFromDb,
+  listChatsMissingAvatar,
   listMessagesFromDb,
+  markChatRead,
   upsertGroupInfo,
 } from './db/repositories'
 import { chatJidIsGroup } from './baileys/message-utils'
-import { getSyncProgress } from './sync-progress'
+import {
+  beginSync,
+  getSyncProgress,
+  scheduleChatsNotify,
+  scheduleSyncIdleFallback,
+} from './sync-progress'
+import { setActiveChat } from './active-chat'
+import { queueAvatarFetches } from './baileys/avatars'
 
 interface StoredSettings extends Record<string, ChatFilter | ColorScheme> {
   chatFilter: ChatFilter
@@ -71,6 +80,28 @@ export function registerIpcHandlers() {
     } catch {
       return null
     }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.chatMarkRead, (_, jid: string) => {
+    markChatRead(jid)
+    scheduleChatsNotify(true)
+  })
+
+  ipcMain.handle(IPC_CHANNELS.chatSetActive, (_, jid: string | null) => {
+    setActiveChat(jid)
+    if (jid) {
+      markChatRead(jid)
+      scheduleChatsNotify(true)
+    }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.syncTrigger, () => {
+    // Re-kick avatar discovery and bump the sync banner so the user gets
+    // visible feedback when they hit the refresh icon.
+    queueAvatarFetches(listChatsMissingAvatar())
+    beginSync()
+    scheduleSyncIdleFallback(8000)
+    scheduleChatsNotify(true)
   })
 
   ipcMain.handle(IPC_CHANNELS.messagesList, (_, jid: string, cursor?: string) =>

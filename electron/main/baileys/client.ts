@@ -18,7 +18,12 @@ import { broadcast } from '../broadcast'
 import { clearDatabase } from '../db'
 import { registerBaileysHandlers } from './handlers'
 import { beginSync, resetSyncProgress, scheduleSyncIdleFallback } from '../sync-progress'
-import { listPlaceholderGroupJids, upsertGroupInfo } from '../db/repositories'
+import {
+  listChatsMissingAvatar,
+  listPlaceholderGroupJids,
+  upsertGroupInfo,
+} from '../db/repositories'
+import { queueAvatarFetches, resetAvatarCache } from './avatars'
 
 export interface ConnectionPayload {
   status: ConnectionStatus
@@ -206,6 +211,9 @@ export async function startWhatsApp(): Promise<void> {
         scheduleSyncIdleFallback(30000)
         broadcast(IPC_CHANNELS.chatsUpdated)
         void hydrateMissingGroupNames(sock)
+        // Catch up avatars for chats that already exist in the DB from a
+        // previous launch (or that were just inserted from history sync).
+        queueAvatarFetches(listChatsMissingAvatar())
       }
 
       if (connection === 'close') {
@@ -285,6 +293,7 @@ export async function logoutWhatsApp(): Promise<void> {
 
   clearDatabase()
   resetSyncProgress()
+  resetAvatarCache()
 
   setState({ status: 'connecting', message: 'Starting fresh session…' })
   await startWhatsApp()

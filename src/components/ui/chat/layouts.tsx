@@ -78,8 +78,20 @@ function ConversationItem({
       )}
     >
       <div className="relative shrink-0">
-        <div className="flex size-11 items-center justify-center rounded-full bg-[var(--chat-bubble-incoming)] text-[13px] font-semibold text-[var(--chat-text-secondary)]">
-          {convo.title.charAt(0).toUpperCase()}
+        <div className="flex size-11 items-center justify-center overflow-hidden rounded-full bg-[var(--chat-bubble-incoming)] text-[13px] font-semibold text-[var(--chat-text-secondary)]">
+          {convo.avatar ? (
+            <img
+              src={convo.avatar}
+              alt={convo.title}
+              className="size-full object-cover"
+              draggable={false}
+              onError={(e) => {
+                ;(e.target as HTMLImageElement).style.display = 'none'
+              }}
+            />
+          ) : (
+            convo.title.charAt(0).toUpperCase()
+          )}
         </div>
         {convo.presence === "online" && (
           <div className="absolute -bottom-0.5 -right-0.5 size-[10px] rounded-full border-2 border-[var(--chat-bg-sidebar)] bg-[var(--chat-green)]" />

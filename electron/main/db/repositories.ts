@@ -25,6 +25,7 @@ interface ChatRow {
   last_message_time: number | null
   unread_count: number
   participant_count: number | null
+  avatar_path: string | null
 }
 
 interface MessageRow {
@@ -107,15 +108,34 @@ export function upsertContacts(contacts: Contact[]): void {
        push_name = COALESCE(excluded.push_name, contacts.push_name),
        updated_at = excluded.updated_at`,
   )
+  const fixDmTitle = getDb().prepare(
+    `UPDATE chats SET title = ?, updated_at = ?
+     WHERE jid = ? AND is_group = 0
+       AND (title = ? OR title = ? OR title GLOB '[0-9]*')`,
+  )
   const tx = getDb().transaction((items: Contact[]) => {
+    const now = Date.now()
     for (const c of items) {
       if (!c.id) continue
+      const displayName =
+        c.name?.trim() || c.notify?.trim() || c.verifiedName?.trim() || null
       stmt.run(
         c.id,
         c.name ?? null,
         c.notify ?? c.verifiedName ?? null,
-        Date.now(),
+        now,
       )
+      // Patch the DM chat title in the same transaction so the sidebar
+      // refreshes from numbers to names immediately.
+      if (displayName && !chatJidIsGroup(c.id)) {
+        fixDmTitle.run(
+          displayName,
+          now,
+          c.id,
+          c.id,
+          formatPhoneFromJid(c.id),
+        )
+      }
     }
   })
   tx(contacts)
@@ -168,6 +188,11 @@ export function upsertChatFromBaileys(chat: Chat): void {
     ? Number(chat.conversationTimestamp) * 1000
     : null
 
+  // unreadCount is often omitted from partial chats.update payloads. Keep the
+  // existing value when not provided so local increments aren't clobbered.
+  const incomingUnread =
+    typeof chat.unreadCount === 'number' ? chat.unreadCount : null
+
   getDb()
     .prepare(
       `INSERT INTO chats (jid, title, is_group, last_message, last_message_time, unread_count, participant_count, updated_at)
@@ -176,7 +201,7 @@ export function upsertChatFromBaileys(chat: Chat): void {
          title = excluded.title,
          is_group = excluded.is_group,
          last_message_time = COALESCE(excluded.last_message_time, chats.last_message_time),
-         unread_count = excluded.unread_count,
+         unread_count = COALESCE(?, chats.unread_count),
          updated_at = excluded.updated_at`,
     )
     .run(
@@ -185,9 +210,10 @@ export function upsertChatFromBaileys(chat: Chat): void {
       isGroup,
       null,
       lastTime,
-      chat.unreadCount ?? 0,
+      incomingUnread ?? 0,
       null,
       Date.now(),
+      incomingUnread,
     )
 }
 
@@ -205,7 +231,7 @@ export function upsertChatsFromBaileys(chats: Chat[]): void {
        END,
        is_group = excluded.is_group,
        last_message_time = COALESCE(excluded.last_message_time, chats.last_message_time),
-       unread_count = excluded.unread_count,
+       unread_count = COALESCE(?, chats.unread_count),
        updated_at = excluded.updated_at`,
   )
   const now = Date.now()
@@ -216,15 +242,18 @@ export function upsertChatsFromBaileys(chats: Chat[]): void {
       const lastTime = chat.conversationTimestamp
         ? Number(chat.conversationTimestamp) * 1000
         : null
+      const incomingUnread =
+        typeof chat.unreadCount === 'number' ? chat.unreadCount : null
       stmt.run(
         jid,
         resolveChatTitle(chat, contactNames),
         chatJidIsGroup(jid) ? 1 : 0,
         null,
         lastTime,
-        chat.unreadCount ?? 0,
+        incomingUnread ?? 0,
         null,
         now,
+        incomingUnread,
       )
     }
   })
@@ -552,7 +581,51 @@ export function listChatsFromDb(filter: ChatFilter, search?: string): ChatSummar
     lastMessage: row.last_message ?? undefined,
     lastMessageTime: row.last_message_time ?? undefined,
     unreadCount: row.unread_count,
+    avatarUrl: row.avatar_path ? `wa-avatar://${encodeURIComponent(row.jid)}` : undefined,
   }))
+}
+
+export function setChatAvatarPath(jid: string, filePath: string | null): void {
+  getDb()
+    .prepare(
+      `UPDATE chats SET avatar_path = ?, updated_at = ? WHERE jid = ?`,
+    )
+    .run(filePath, Date.now(), jid)
+}
+
+export function getChatAvatarPath(jid: string): string | null {
+  const row = getDb()
+    .prepare(`SELECT avatar_path FROM chats WHERE jid = ?`)
+    .get(jid) as { avatar_path: string | null } | undefined
+  return row?.avatar_path ?? null
+}
+
+export function listChatsMissingAvatar(limit = 100): string[] {
+  const rows = getDb()
+    .prepare(
+      `SELECT jid FROM chats
+       WHERE avatar_path IS NULL
+       ORDER BY COALESCE(last_message_time, 0) DESC
+       LIMIT ?`,
+    )
+    .all(limit) as { jid: string }[]
+  return rows.map((row) => row.jid)
+}
+
+export function markChatRead(jid: string): void {
+  getDb()
+    .prepare(
+      `UPDATE chats SET unread_count = 0, updated_at = ? WHERE jid = ?`,
+    )
+    .run(Date.now(), jid)
+}
+
+export function incrementChatUnread(jid: string): void {
+  getDb()
+    .prepare(
+      `UPDATE chats SET unread_count = unread_count + 1, updated_at = ? WHERE jid = ?`,
+    )
+    .run(Date.now(), jid)
 }
 
 function rowToMessageRecord(row: MessageRow): MessageRecord {
