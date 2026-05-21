@@ -10,6 +10,8 @@ export function SyncProgressBanner({ sync }: SyncProgressBannerProps) {
 
   const indeterminate = sync.progress <= 0
   const width = indeterminate ? 40 : Math.max(4, sync.progress)
+  const currentChunkMessages = sync.currentChunkMessages ?? 0
+  const importRatePerSecond = sync.importRatePerSecond ?? 0
 
   return (
     <div
@@ -29,6 +31,10 @@ export function SyncProgressBanner({ sync }: SyncProgressBannerProps) {
               {(sync.chatsSynced ?? 0).toLocaleString()} chats
               {(sync.messagesSynced ?? 0) > 0 &&
                 ` · ${(sync.messagesSynced ?? 0).toLocaleString()} messages`}
+              {currentChunkMessages > 0 &&
+                ` · last chunk ${currentChunkMessages.toLocaleString()}`}
+              {importRatePerSecond > 0 &&
+                ` · ${importRatePerSecond.toLocaleString()}/sec`}
             </p>
           ) : null}
           <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[var(--chat-border)]">

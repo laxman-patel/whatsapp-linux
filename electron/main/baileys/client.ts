@@ -1,6 +1,7 @@
 import makeWASocket, {
   DisconnectReason,
   fetchLatestBaileysVersion,
+  proto,
   useMultiFileAuthState,
   type WASocket,
 } from '@whiskeysockets/baileys'
@@ -31,6 +32,21 @@ let currentState: ConnectionPayload = { status: 'disconnected' }
 
 const connectionListeners = new Set<ConnectionListener>()
 const qrListeners = new Set<QrListener>()
+
+function shouldSyncFastHistory(
+  msg: proto.Message.IHistorySyncNotification,
+): boolean {
+  const type = msg.syncType
+
+  // Keep first-login bootstrap, recent messages, and push names. Skip expensive
+  // full/on-demand/status history so the app becomes usable like WhatsApp Web.
+  return (
+    type === proto.Message.HistorySyncType.INITIAL_BOOTSTRAP ||
+    type === proto.Message.HistorySyncType.RECENT ||
+    type === proto.Message.HistorySyncType.PUSH_NAME ||
+    type === proto.Message.HistorySyncType.NON_BLOCKING_DATA
+  )
+}
 
 export function getAuthDir(): string {
   return path.join(app.getPath('userData'), 'baileys-auth')
@@ -83,6 +99,7 @@ export async function startWhatsApp(): Promise<void> {
       printQRInTerminal: false,
       browser: ['WhatsApp Desktop', 'Linux', '1.0.0'],
       syncFullHistory: false,
+      shouldSyncHistoryMessage: shouldSyncFastHistory,
       markOnlineOnConnect: false,
       getMessage: async () => undefined,
     })

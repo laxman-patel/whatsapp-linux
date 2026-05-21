@@ -136,7 +136,43 @@ export function upsertChatFromBaileys(chat: Chat): void {
 }
 
 export function upsertChatsFromBaileys(chats: Chat[]): void {
-  for (const chat of chats) upsertChatFromBaileys(chat)
+  if (chats.length === 0) return
+
+  const contactNames = getContactNameMap()
+  const stmt = getDb().prepare(
+    `INSERT INTO chats (jid, title, is_group, last_message, last_message_time, unread_count, participant_count, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(jid) DO UPDATE SET
+       title = CASE
+         WHEN chats.title = 'Group' OR chats.title = excluded.jid THEN excluded.title
+         ELSE chats.title
+       END,
+       is_group = excluded.is_group,
+       last_message_time = COALESCE(excluded.last_message_time, chats.last_message_time),
+       unread_count = excluded.unread_count,
+       updated_at = excluded.updated_at`,
+  )
+  const now = Date.now()
+  const tx = getDb().transaction((items: Chat[]) => {
+    for (const chat of items) {
+      const jid = chat.id
+      if (!isRenderableChatJid(jid)) continue
+      const lastTime = chat.conversationTimestamp
+        ? Number(chat.conversationTimestamp) * 1000
+        : null
+      stmt.run(
+        jid,
+        resolveChatTitle(chat, contactNames),
+        chatJidIsGroup(jid) ? 1 : 0,
+        null,
+        lastTime,
+        chat.unreadCount ?? 0,
+        null,
+        now,
+      )
+    }
+  })
+  tx(chats)
 }
 
 /** Ensure parent chat row exists before inserting messages (FK constraint). */
@@ -224,6 +260,64 @@ export function upsertMessagesFromBaileys(messages: WAMessage[], meId: string): 
   if (messages.length === 0) return 0
 
   const contactNames = getContactNameMap()
+  const now = Date.now()
+  const jidsNeeded = new Set<string>()
+  const rows: {
+    id: string
+    chatJid: string
+    senderId: string
+    senderName: string
+    text: string | null
+    timestamp: number
+    status: string | null
+    isFromMe: number
+  }[] = []
+  const chatLast = new Map<string, { preview: string; timestamp: number }>()
+
+  for (const msg of messages) {
+    const chatJid = resolveChatJid(msg)
+    if (!isRenderableChatJid(chatJid)) continue
+
+    const text = getMessageText(msg)
+    if (!text && !msg.key.fromMe && !msg.message) continue
+
+    const senderName = resolveSenderName(msg, meId, contactNames)
+    const timestamp = getMessageTimestamp(msg)
+    const isFromMe = msg.key.fromMe ? 1 : 0
+    const rawStatus = typeof msg.status === 'number' ? msg.status : undefined
+    const status = msg.key.fromMe ? mapReceiptStatus(rawStatus) : undefined
+
+    jidsNeeded.add(chatJid)
+    rows.push({
+      id: messageIdFromKey(msg),
+      chatJid,
+      senderId: resolveSenderId(msg, meId),
+      senderName,
+      text: text ?? null,
+      timestamp,
+      status: status ?? null,
+      isFromMe,
+    })
+
+    const preview = formatLastMessagePreview(
+      text,
+      senderName,
+      chatJidIsGroup(chatJid),
+      Boolean(isFromMe),
+    )
+    const prev = chatLast.get(chatJid)
+    if (!prev || timestamp >= prev.timestamp) {
+      chatLast.set(chatJid, { preview, timestamp })
+    }
+  }
+
+  if (rows.length === 0) return 0
+
+  const insertChat = getDb().prepare(
+    `INSERT INTO chats (jid, title, is_group, last_message, last_message_time, unread_count, updated_at)
+     VALUES (?, ?, ?, NULL, NULL, 0, ?)
+     ON CONFLICT(jid) DO NOTHING`,
+  )
   const insertMsg = getDb().prepare(
     `INSERT INTO messages (id, chat_jid, sender_id, sender_name, text, timestamp, status, is_from_me)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -232,69 +326,44 @@ export function upsertMessagesFromBaileys(messages: WAMessage[], meId: string): 
        status = COALESCE(excluded.status, messages.status),
        sender_name = COALESCE(excluded.sender_name, messages.sender_name)`,
   )
+  const updateLast = getDb().prepare(
+    `UPDATE chats SET
+       last_message = ?,
+       last_message_time = ?,
+       updated_at = ?
+     WHERE jid = ? AND COALESCE(last_message_time, 0) <= ?`,
+  )
 
-  const chatLast = new Map<
-    string,
-    { preview: string; timestamp: number }
-  >()
-
-  let inserted = 0
-
-  const tx = getDb().transaction((msgs: WAMessage[]) => {
-    const jidsNeeded = new Set<string>()
-
-    for (const msg of msgs) {
-      const chatJid = resolveChatJid(msg)
-      if (!isRenderableChatJid(chatJid)) continue
-
-      const text = getMessageText(msg)
-      if (!text && !msg.key.fromMe && !msg.message) continue
-
-      jidsNeeded.add(chatJid)
-
-      const id = messageIdFromKey(msg)
-      const senderId = resolveSenderId(msg, meId)
-      const senderName = resolveSenderName(msg, meId, contactNames)
-      const timestamp = getMessageTimestamp(msg)
-      const isFromMe = msg.key.fromMe ? 1 : 0
-      const rawStatus =
-        typeof msg.status === 'number' ? msg.status : undefined
-      const status = msg.key.fromMe ? mapReceiptStatus(rawStatus) : undefined
-
-      insertMsg.run(
-        id,
-        chatJid,
-        senderId,
-        senderName,
-        text ?? null,
-        timestamp,
-        status ?? null,
-        isFromMe,
-      )
-      inserted++
-
-      const preview = formatLastMessagePreview(
-        text,
-        senderName,
-        chatJidIsGroup(chatJid),
-        Boolean(isFromMe),
-      )
-      const prev = chatLast.get(chatJid)
-      if (!prev || timestamp >= prev.timestamp) {
-        chatLast.set(chatJid, { preview, timestamp })
-      }
-    }
-
+  const tx = getDb().transaction(() => {
     for (const jid of jidsNeeded) {
-      ensureChatRow(jid, contactNames)
+      insertChat.run(
+        jid,
+        getFallbackChatTitle(jid, contactNames),
+        chatJidIsGroup(jid) ? 1 : 0,
+        now,
+      )
     }
+
+    for (const row of rows) {
+      insertMsg.run(
+        row.id,
+        row.chatJid,
+        row.senderId,
+        row.senderName,
+        row.text,
+        row.timestamp,
+        row.status,
+        row.isFromMe,
+      )
+    }
+
     for (const [jid, last] of chatLast) {
-      ensureChatRow(jid, contactNames, last.preview, last.timestamp)
+      updateLast.run(last.preview, last.timestamp, now, jid, last.timestamp)
     }
   })
 
-  tx(messages)
-  return inserted
+  tx()
+  return rows.length
 }
 
 function formatLastMessagePreview(
@@ -313,6 +382,11 @@ function getChatTitle(jid: string, contactNames: Map<string, string>): string {
     .prepare('SELECT title FROM chats WHERE jid = ?')
     .get(jid) as { title: string } | undefined
   if (row?.title) return row.title
+  if (chatJidIsGroup(jid)) return 'Group'
+  return contactNames.get(jid) ?? formatPhoneFromJid(jid)
+}
+
+function getFallbackChatTitle(jid: string, contactNames: Map<string, string>): string {
   if (chatJidIsGroup(jid)) return 'Group'
   return contactNames.get(jid) ?? formatPhoneFromJid(jid)
 }

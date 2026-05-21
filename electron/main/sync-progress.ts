@@ -10,12 +10,14 @@ const IDLE: SyncProgressPayload = {
 
 let state: SyncProgressPayload = { ...IDLE }
 let syncStartedAt = 0
+let lastEmitAt = 0
 let idleTimer: ReturnType<typeof setTimeout> | null = null
 let chatNotifyTimer: ReturnType<typeof setTimeout> | null = null
 let messageNotifyTimer: ReturnType<typeof setTimeout> | null = null
 const pendingMessageJids = new Set<string>()
 
 function emit() {
+  lastEmitAt = Date.now()
   broadcast(IPC_CHANNELS.syncUpdate, { ...state })
 }
 
@@ -44,7 +46,9 @@ export function beginSync() {
 export function updateSyncProgress(partial: Partial<SyncProgressPayload>) {
   if (!state.active && partial.active !== true) return
   state = { ...state, ...partial }
-  emit()
+  if (Date.now() - lastEmitAt > 120 || partial.progress === 100) {
+    emit()
+  }
 }
 
 export function recordHistoryChunk(stats: {
@@ -59,6 +63,8 @@ export function recordHistoryChunk(stats: {
   const chatsSynced = (state.chatsSynced ?? 0) + (stats.chats ?? 0)
   const messagesSynced = (state.messagesSynced ?? 0) + (stats.messages ?? 0)
   const contactsSynced = (state.contactsSynced ?? 0) + (stats.contacts ?? 0)
+  const elapsedMs = Math.max(1, Date.now() - syncStartedAt)
+  const importRatePerSecond = Math.round((messagesSynced / elapsedMs) * 1000)
 
   let progress = state.progress
   if (typeof stats.progress === 'number' && !Number.isNaN(stats.progress)) {
@@ -78,7 +84,10 @@ export function recordHistoryChunk(stats: {
     chatsSynced,
     messagesSynced,
     contactsSynced,
-    message: buildMessage(messagesSynced, chatsSynced, progress),
+    currentChunkMessages: stats.messages ?? 0,
+    importRatePerSecond,
+    elapsedMs,
+    message: buildMessage(messagesSynced, chatsSynced, progress, importRatePerSecond),
   })
 
   if (stats.isLatest && progress >= 100) {
@@ -90,9 +99,15 @@ export function onHistorySyncComplete() {
   finishSync()
 }
 
-function buildMessage(messages: number, chats: number, progress: number): string {
+function buildMessage(
+  messages: number,
+  chats: number,
+  progress: number,
+  rate: number,
+): string {
   if (messages > 0) {
-    return `Syncing messages… ${messages.toLocaleString()} imported (${progress}%)`
+    const rateText = rate > 0 ? ` · ${rate.toLocaleString()}/sec` : ''
+    return `Syncing messages… ${messages.toLocaleString()} imported (${progress}%)${rateText}`
   }
   if (chats > 0) {
     return `Syncing conversations… ${chats.toLocaleString()} chats (${progress}%)`

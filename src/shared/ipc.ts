@@ -50,6 +50,9 @@ export interface SyncProgressPayload {
   chatsSynced?: number
   messagesSynced?: number
   contactsSynced?: number
+  currentChunkMessages?: number
+  importRatePerSecond?: number
+  elapsedMs?: number
 }
 
 export interface IpcApi {
