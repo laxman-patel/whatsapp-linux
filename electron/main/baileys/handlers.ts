@@ -26,10 +26,14 @@ export function registerBaileysHandlers(sock: WASocket): void {
     broadcast(IPC_CHANNELS.messagesUpdated, jid)
 
   sock.ev.on('messaging-history.set', (data) => {
-    if (data.contacts?.length) upsertContacts(data.contacts)
-    if (data.chats?.length) upsertChatsFromBaileys(data.chats)
-    if (data.messages?.length) upsertMessagesFromBaileys(data.messages, meId)
-    notifyChats()
+    try {
+      if (data.contacts?.length) upsertContacts(data.contacts)
+      if (data.chats?.length) upsertChatsFromBaileys(data.chats)
+      if (data.messages?.length) upsertMessagesFromBaileys(data.messages, meId)
+      notifyChats()
+    } catch (err) {
+      console.error('[baileys] messaging-history.set failed:', err)
+    }
   })
 
   sock.ev.on('chats.upsert', (chats) => {
@@ -69,11 +73,15 @@ export function registerBaileysHandlers(sock: WASocket): void {
   })
 
   sock.ev.on('messages.upsert', ({ messages }) => {
-    for (const msg of messages) {
-      const record = upsertMessageFromBaileys(msg, meId)
-      if (record) notifyMessages(record.chatJid)
+    try {
+      for (const msg of messages) {
+        const record = upsertMessageFromBaileys(msg, meId)
+        if (record) notifyMessages(record.chatJid)
+      }
+      notifyChats()
+    } catch (err) {
+      console.error('[baileys] messages.upsert failed:', err)
     }
-    notifyChats()
   })
 
   sock.ev.on('messages.update', (updates) => {

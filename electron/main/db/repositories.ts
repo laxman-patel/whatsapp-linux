@@ -139,6 +139,38 @@ export function upsertChatsFromBaileys(chats: Chat[]): void {
   for (const chat of chats) upsertChatFromBaileys(chat)
 }
 
+/** Ensure parent chat row exists before inserting messages (FK constraint). */
+function ensureChatRow(
+  chatJid: string,
+  contactNames: Map<string, string>,
+  lastMessage?: string,
+  lastMessageTime?: number,
+): void {
+  const title = getChatTitle(chatJid, contactNames)
+  const isGroup = chatJidIsGroup(chatJid) ? 1 : 0
+  const now = Date.now()
+
+  getDb()
+    .prepare(
+      `INSERT INTO chats (jid, title, is_group, last_message, last_message_time, unread_count, updated_at)
+       VALUES (?, ?, ?, ?, ?, 0, ?)
+       ON CONFLICT(jid) DO NOTHING`,
+    )
+    .run(chatJid, title, isGroup, lastMessage ?? null, lastMessageTime ?? null, now)
+
+  if (lastMessage !== undefined || lastMessageTime !== undefined) {
+    getDb()
+      .prepare(
+        `UPDATE chats SET
+           last_message = COALESCE(?, last_message),
+           last_message_time = COALESCE(?, last_message_time),
+           updated_at = ?
+         WHERE jid = ?`,
+      )
+      .run(lastMessage ?? null, lastMessageTime ?? null, now, chatJid)
+  }
+}
+
 export function upsertMessageFromBaileys(msg: WAMessage, meId: string): MessageRecord | null {
   const chatJid = resolveChatJid(msg)
   if (!isRenderableChatJid(chatJid)) return null
@@ -160,6 +192,11 @@ export function upsertMessageFromBaileys(msg: WAMessage, meId: string): MessageR
     typeof msg.status === 'number' ? msg.status : undefined
   const status = msg.key.fromMe ? mapReceiptStatus(rawStatus) : undefined
 
+  const preview = formatLastMessagePreview(text, senderName, chatJidIsGroup(chatJid), Boolean(isFromMe))
+
+  // Chat row must exist before message insert (messages.chat_jid → chats.jid FK)
+  ensureChatRow(chatJid, contactNames, preview, timestamp)
+
   getDb()
     .prepare(
       `INSERT INTO messages (id, chat_jid, sender_id, sender_name, text, timestamp, status, is_from_me)
@@ -170,26 +207,6 @@ export function upsertMessageFromBaileys(msg: WAMessage, meId: string): MessageR
          sender_name = COALESCE(excluded.sender_name, messages.sender_name)`,
     )
     .run(id, chatJid, senderId, senderName, text ?? null, timestamp, status ?? null, isFromMe)
-
-  const preview = formatLastMessagePreview(text, senderName, chatJidIsGroup(chatJid), Boolean(isFromMe))
-
-  getDb()
-    .prepare(
-      `INSERT INTO chats (jid, title, is_group, last_message, last_message_time, unread_count, updated_at)
-       VALUES (?, ?, ?, ?, ?, 0, ?)
-       ON CONFLICT(jid) DO UPDATE SET
-         last_message = excluded.last_message,
-         last_message_time = excluded.last_message_time,
-         updated_at = excluded.updated_at`,
-    )
-    .run(
-      chatJid,
-      getChatTitle(chatJid, contactNames),
-      chatJidIsGroup(chatJid) ? 1 : 0,
-      preview,
-      timestamp,
-      Date.now(),
-    )
 
   return rowToMessageRecord({
     id,
@@ -231,6 +248,8 @@ function getChatTitle(jid: string, contactNames: Map<string, string>): string {
 }
 
 export function setGroupParticipantCount(jid: string, count: number): void {
+  if (!isRenderableChatJid(jid)) return
+  ensureChatRow(jid, getContactNameMap())
   getDb()
     .prepare(
       `UPDATE chats SET participant_count = ?, updated_at = ? WHERE jid = ?`,
