@@ -36,8 +36,8 @@
   --chat-bg-header: rgba(255, 255, 255, 0.85);
   --chat-bg-composer: rgba(255, 255, 255, 0.92);
 
-  /* macOS Messages bubble colors */
-  --chat-bubble-outgoing: #34c759;
+  /* Sent message bubbles (iMessage blue) */
+  --chat-bubble-outgoing: #007aff;
   --chat-bubble-outgoing-text: #ffffff;
   --chat-bubble-incoming: #e9e9eb;
   --chat-bubble-incoming-text: #18181b;
@@ -78,7 +78,7 @@ html.dark [data-chat-theme='lunar'] {
   --chat-bg-header: rgba(28, 28, 30, 0.85);
   --chat-bg-composer: rgba(28, 28, 30, 0.92);
 
-  --chat-bubble-outgoing: #34c759;
+  --chat-bubble-outgoing: #0a84ff;
   --chat-bubble-outgoing-text: #ffffff;
   --chat-bubble-incoming: #3a3a3c;
   --chat-bubble-incoming-text: #ffffff;
@@ -162,4 +162,10 @@ body {
 
 .chat-messages {
   font-family: var(--chat-font-sans);
+}
+
+/* Prevent hover toolbars flashing when switching chats (until pointer moves) */
+[data-suppress-message-actions='true'] .message-actions-toolbar {
+  opacity: 0 !important;
+  pointer-events: none !important;
 }

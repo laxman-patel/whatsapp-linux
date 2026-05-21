@@ -45,6 +45,10 @@ export function WhatsAppMessenger({
 }: WhatsAppMessengerProps) {
   const activeConvo = conversations.find((c) => c.id === activeConversationId)
 
+  const composerPlaceholder = activeConvo
+    ? `Message ${activeConvo.title}…`
+    : 'Select a conversation'
+
   const itemContent = useCallback(
     (index: number) => {
       const convo = conversations[index]
@@ -123,8 +127,13 @@ export function WhatsAppMessenger({
                   </div>
                 }
               />
-              <ChatMessages messages={messages} className="min-h-0 flex-1" />
-              <ChatComposer onSend={onSend} placeholder="iMessage" />
+              <ChatMessages
+                key={activeConversationId}
+                conversationKey={activeConversationId}
+                messages={messages}
+                className="min-h-0 flex-1"
+              />
+              <ChatComposer onSend={onSend} placeholder={composerPlaceholder} />
             </>
           ) : (
             <div className="flex flex-1 items-center justify-center">

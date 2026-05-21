@@ -158,7 +158,7 @@ function ChatMessageActions({ message, isOutgoing }: ChatMessageActionsProps) {
   return (
     <div
       className={cn(
-        "chat-toolbar-enter absolute -top-3 z-10 flex items-center gap-0.5 rounded-lg border border-[var(--chat-border-strong)] bg-[var(--chat-bg-sidebar)] p-0.5 opacity-0 shadow-[var(--chat-shadow-toolbar)] transition-opacity group-hover/message:opacity-100",
+        "message-actions-toolbar absolute -top-3 z-10 flex items-center gap-0.5 rounded-lg border border-[var(--chat-border-strong)] bg-[var(--chat-bg-sidebar)] p-0.5 opacity-0 shadow-[var(--chat-shadow-toolbar)] transition-opacity duration-150 group-hover/message:opacity-100",
         isOutgoing ? "right-0" : "left-10"
       )}
     >
@@ -730,7 +730,7 @@ function ChatMessageReactions({
           // Toggle first available reaction for demo; in prod this opens a picker
           onReactionAdd?.(messageId, "\u{1F44D}")
         }}
-        className="flex size-[26px] items-center justify-center rounded-full border border-dashed border-[var(--chat-border)] text-[var(--chat-text-tertiary)] opacity-0 transition-all hover:border-[var(--chat-accent)] hover:text-[var(--chat-accent)] group-hover/message:opacity-100"
+        className="message-actions-toolbar flex size-[26px] items-center justify-center rounded-full border border-dashed border-[var(--chat-border)] text-[var(--chat-text-tertiary)] opacity-0 transition-opacity duration-150 hover:border-[var(--chat-accent)] hover:text-[var(--chat-accent)] group-hover/message:opacity-100"
         aria-label="Add reaction"
       >
         <SmilePlus className="size-3" />
@@ -987,16 +987,24 @@ interface ChatMessagesProps {
   className?: string
   onLoadMore?: () => Promise<void>
   hasMore?: boolean
+  /** Changes when switching chats — used to suppress hover toolbar flash */
+  conversationKey?: string
 }
 
 function ChatMessages({
   messages,
   typingUsers = [],
   className,
+  conversationKey,
 }: ChatMessagesProps) {
   const { currentUser, messageGroupingInterval } = useChatContext()
   const { containerRef, scrollToBottom, isAtBottom, unseenCount } =
     useAutoScroll(messages)
+  const [messageActionsEnabled, setMessageActionsEnabled] = React.useState(false)
+
+  React.useEffect(() => {
+    setMessageActionsEnabled(false)
+  }, [conversationKey])
 
   const items = React.useMemo(
     () => groupMessages(messages, currentUser.id, messageGroupingInterval),
@@ -1016,6 +1024,8 @@ function ChatMessages({
         className="flex-1 overflow-y-auto px-4 py-4"
         role="log"
         aria-live="polite"
+        data-suppress-message-actions={!messageActionsEnabled}
+        onPointerMove={() => setMessageActionsEnabled(true)}
       >
         <div className="mx-auto w-full max-w-3xl">
           {items.map((item, i) => {
@@ -1291,13 +1301,13 @@ function ChatComposer({
       <div className="border-t border-[var(--chat-border)] bg-[var(--chat-bg-composer)] px-3 py-2 backdrop-blur-[20px] backdrop-saturate-[180%]">
         <div className="mx-auto max-w-3xl">
           {/* Input row */}
-          <div className="flex items-end gap-2">
+          <div className="flex items-center gap-2">
             {/* + button with attachment popout */}
-            <div className="relative">
+            <div className="relative shrink-0 self-center">
               <button
                 onClick={() => setShowAttachMenu(!showAttachMenu)}
                 className={cn(
-                  "flex size-9 items-center justify-center rounded-full border border-[var(--chat-border)] bg-[var(--chat-bg-sidebar)] text-[var(--chat-text-tertiary)] transition-all hover:bg-[var(--chat-accent-soft)] hover:text-[var(--chat-text-secondary)]",
+                  "flex size-9 shrink-0 items-center justify-center rounded-full border border-[var(--chat-border)] bg-[var(--chat-bg-sidebar)] text-[var(--chat-text-tertiary)] transition-all hover:bg-[var(--chat-accent-soft)] hover:text-[var(--chat-text-secondary)]",
                   showAttachMenu && "rotate-45 bg-[var(--chat-accent-soft)] text-[var(--chat-accent)]"
                 )}
                 aria-label="Attachments"
