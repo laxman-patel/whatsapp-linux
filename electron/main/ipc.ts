@@ -1,7 +1,12 @@
 import { ipcMain, BrowserWindow } from 'electron'
 import Store from 'electron-store'
-import type { ChatFilter, ColorScheme, ConnectionStatus } from '../../src/shared/ipc'
+import type { ChatFilter, ColorScheme } from '../../src/shared/ipc'
 import { IPC_CHANNELS } from '../../src/shared/ipc'
+import {
+  getConnectionState,
+  logoutWhatsApp,
+  retryWhatsApp,
+} from './connection-bridge'
 import {
   getMockGroupMeta,
   getMockMessages,
@@ -38,10 +43,15 @@ export function registerIpcHandlers() {
     store.set('colorScheme', scheme)
   })
 
-  ipcMain.handle(IPC_CHANNELS.authStatus, () => ({
-    status: 'connected' as ConnectionStatus,
-    message: 'Mock session (Phase 0)',
-  }))
+  ipcMain.handle(IPC_CHANNELS.authStatus, () => getConnectionState())
+
+  ipcMain.handle(IPC_CHANNELS.authLogout, async () => {
+    await logoutWhatsApp()
+  })
+
+  ipcMain.handle(IPC_CHANNELS.authRetry, async () => {
+    await retryWhatsApp()
+  })
 
   ipcMain.handle(
     IPC_CHANNELS.chatsList,

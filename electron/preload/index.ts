@@ -1,5 +1,5 @@
 import { ipcRenderer, contextBridge, IpcRendererEvent } from 'electron'
-import type { ChatFilter, ConnectionStatus, IpcApi } from '../../src/shared/ipc'
+import type { ChatFilter, ConnectionPayload, IpcApi } from '../../src/shared/ipc'
 import { IPC_CHANNELS } from '../../src/shared/ipc'
 
 function subscribe<T extends unknown[]>(
@@ -17,12 +17,15 @@ const api: IpcApi = {
   setColorScheme: (scheme) =>
     ipcRenderer.invoke(IPC_CHANNELS.settingsSetColorScheme, scheme),
   getAuthStatus: () => ipcRenderer.invoke(IPC_CHANNELS.authStatus),
+  authLogout: () => ipcRenderer.invoke(IPC_CHANNELS.authLogout),
+  authRetry: () => ipcRenderer.invoke(IPC_CHANNELS.authRetry),
   listChats: (filter, search) => ipcRenderer.invoke(IPC_CHANNELS.chatsList, filter, search),
   openChat: (jid) => ipcRenderer.invoke(IPC_CHANNELS.chatOpen, jid),
   listMessages: (jid, cursor) => ipcRenderer.invoke(IPC_CHANNELS.messagesList, jid, cursor),
   sendText: (jid, text) => ipcRenderer.invoke(IPC_CHANNELS.messagesSendText, jid, text),
   onConnectionUpdate: (cb) =>
-    subscribe<[ConnectionStatus]>(IPC_CHANNELS.connectionUpdate, (status) => cb(status)),
+    subscribe<[ConnectionPayload]>(IPC_CHANNELS.connectionUpdate, (payload) => cb(payload)),
+  onAuthQr: (cb) => subscribe<[string]>(IPC_CHANNELS.authQr, (dataUrl) => cb(dataUrl)),
   onChatsUpdated: (cb) => subscribe<[]>(IPC_CHANNELS.chatsUpdated, () => cb()),
   onMessagesUpdated: (cb) =>
     subscribe<[string]>(IPC_CHANNELS.messagesUpdated, (jid) => cb(jid)),

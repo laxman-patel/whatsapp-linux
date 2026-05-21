@@ -35,11 +35,18 @@ export interface AppSettings {
   colorScheme: ColorScheme
 }
 
+export interface ConnectionPayload {
+  status: ConnectionStatus
+  message?: string
+}
+
 export interface IpcApi {
   getSettings: () => Promise<AppSettings>
   setChatFilter: (filter: ChatFilter) => Promise<void>
   setColorScheme: (scheme: ColorScheme) => Promise<void>
-  getAuthStatus: () => Promise<{ status: ConnectionStatus; message?: string }>
+  getAuthStatus: () => Promise<ConnectionPayload>
+  authLogout: () => Promise<void>
+  authRetry: () => Promise<void>
   listChats: (filter: ChatFilter, search?: string) => Promise<ChatSummary[]>
   openChat: (jid: string) => Promise<{ participantCount?: number } | null>
   listMessages: (jid: string, cursor?: string) => Promise<{
@@ -47,7 +54,8 @@ export interface IpcApi {
     nextCursor?: string
   }>
   sendText: (jid: string, text: string) => Promise<MessageRecord>
-  onConnectionUpdate: (cb: (status: ConnectionStatus) => void) => () => void
+  onConnectionUpdate: (cb: (payload: ConnectionPayload) => void) => () => void
+  onAuthQr: (cb: (dataUrl: string) => void) => () => void
   onChatsUpdated: (cb: () => void) => () => void
   onMessagesUpdated: (cb: (jid: string) => void) => () => void
 }
@@ -57,6 +65,9 @@ export const IPC_CHANNELS = {
   settingsSetFilter: 'settings:set-filter',
   settingsSetColorScheme: 'settings:set-color-scheme',
   authStatus: 'auth:status',
+  authLogout: 'auth:logout',
+  authRetry: 'auth:retry',
+  authQr: 'auth:qr',
   chatsList: 'chats:list',
   chatOpen: 'chat:open',
   messagesList: 'messages:list',

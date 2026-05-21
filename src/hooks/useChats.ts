@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { ChatFilter, ChatSummary, ColorScheme, MessageRecord } from '@/shared/ipc'
+import type {
+  ChatFilter,
+  ChatSummary,
+  ColorScheme,
+  ConnectionPayload,
+  MessageRecord,
+} from '@/shared/ipc'
 
 function resolveDark(scheme: ColorScheme): boolean {
   if (scheme === 'dark') return true
@@ -94,17 +100,35 @@ export function useMessages(jid: string | undefined) {
   return { messages, refresh }
 }
 
-export function useAuthStatus() {
-  const [status, setStatus] = useState<string>('connecting')
-  const [message, setMessage] = useState<string | undefined>()
+export function useAuth() {
+  const [state, setState] = useState<ConnectionPayload>({ status: 'connecting' })
+  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null)
 
   useEffect(() => {
-    window.api.getAuthStatus().then((s) => {
-      setStatus(s.status)
-      setMessage(s.message)
+    window.api.getAuthStatus().then(setState)
+
+    const unsubConnection = window.api.onConnectionUpdate((payload) => {
+      setState(payload)
+      if (payload.status !== 'qr') setQrDataUrl(null)
     })
-    return window.api.onConnectionUpdate((s) => setStatus(s))
+
+    const unsubQr = window.api.onAuthQr((dataUrl) => setQrDataUrl(dataUrl))
+
+    return () => {
+      unsubConnection()
+      unsubQr()
+    }
   }, [])
 
-  return { status, message }
+  const retry = useCallback(() => window.api.authRetry(), [])
+  const logout = useCallback(() => window.api.authLogout(), [])
+
+  return {
+    status: state.status,
+    message: state.message,
+    qrDataUrl,
+    retry,
+    logout,
+    isConnected: state.status === 'connected',
+  }
 }

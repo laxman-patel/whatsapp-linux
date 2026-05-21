@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { WhatsAppMessenger } from '@/components/WhatsAppMessenger'
+import { QrLoginScreen } from '@/components/QrLoginScreen'
 import {
   chatSummaryToSidebar,
   CURRENT_USER,
   messageToChatcn,
 } from '@/lib/adapters/baileys-to-chatcn'
-import { useAuthStatus, useChats, useMessages, useSettings } from '@/hooks/useChats'
+import { useAuth, useChats, useMessages, useSettings } from '@/hooks/useChats'
 import { ThemeToggle } from '@/components/ThemeToggle'
 import type { ChatFilter, ColorScheme } from '@/shared/ipc'
 
@@ -28,10 +29,10 @@ function TitleBar({
 
 function App() {
   const { chatFilter, setChatFilter, colorScheme, setColorScheme, loaded } = useSettings()
+  const { status, message, qrDataUrl, retry, logout, isConnected } = useAuth()
   const [search, setSearch] = useState('')
   const [activeJid, setActiveJid] = useState<string | undefined>()
   const [headerSubtitle, setHeaderSubtitle] = useState<string | undefined>()
-  const { status, message } = useAuthStatus()
   const { chats } = useChats(chatFilter, search)
   const { messages } = useMessages(activeJid)
 
@@ -55,20 +56,23 @@ function App() {
     }
   }, [chats, activeJid])
 
-  const handleSelectConversation = useCallback(async (jid: string) => {
-    setActiveJid(jid)
-    const chat = chats.find((c) => c.jid === jid)
-    if (chat?.isGroup) {
-      const meta = await window.api.openChat(jid)
-      setHeaderSubtitle(
-        meta?.participantCount
-          ? `${meta.participantCount} participants`
-          : 'Group',
-      )
-    } else {
-      setHeaderSubtitle(undefined)
-    }
-  }, [chats])
+  const handleSelectConversation = useCallback(
+    async (jid: string) => {
+      setActiveJid(jid)
+      const chat = chats.find((c) => c.jid === jid)
+      if (chat?.isGroup) {
+        const meta = await window.api.openChat(jid)
+        setHeaderSubtitle(
+          meta?.participantCount
+            ? `${meta.participantCount} participants`
+            : 'Group',
+        )
+      } else {
+        setHeaderSubtitle(undefined)
+      }
+    },
+    [chats],
+  )
 
   const handleSend = useCallback(
     async (text: string) => {
@@ -96,26 +100,32 @@ function App() {
   return (
     <div className="flex h-screen flex-col overflow-hidden">
       <TitleBar colorScheme={colorScheme} onColorSchemeChange={setColorScheme} />
-      {status !== 'connected' && (
-        <div className="shrink-0 bg-amber-50 px-4 py-2 text-center text-[13px] text-amber-800 dark:bg-amber-950/50 dark:text-amber-200">
-          {message ?? `Connection: ${status}`}
-        </div>
-      )}
+
       <div className="min-h-0 flex-1">
-        <WhatsAppMessenger
-          currentUser={CURRENT_USER}
-          conversations={sidebarConversations}
-          activeConversationId={activeJid}
-          onSelectConversation={handleSelectConversation}
-          messages={chatMessages}
-          onSend={handleSend}
-          filter={chatFilter}
-          onFilterChange={handleFilterChange}
-          search={search}
-          onSearchChange={setSearch}
-          headerSubtitle={headerSubtitle}
-          className="h-full"
-        />
+        {isConnected ? (
+          <WhatsAppMessenger
+            currentUser={CURRENT_USER}
+            conversations={sidebarConversations}
+            activeConversationId={activeJid}
+            onSelectConversation={handleSelectConversation}
+            messages={chatMessages}
+            onSend={handleSend}
+            filter={chatFilter}
+            onFilterChange={handleFilterChange}
+            search={search}
+            onSearchChange={setSearch}
+            headerSubtitle={headerSubtitle}
+            className="h-full"
+          />
+        ) : (
+          <QrLoginScreen
+            status={status}
+            message={message}
+            qrDataUrl={qrDataUrl}
+            onRetry={() => void retry()}
+            onLogout={() => void logout()}
+          />
+        )}
       </div>
     </div>
   )

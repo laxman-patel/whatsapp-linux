@@ -11,18 +11,26 @@ This is **not** an official WhatsApp client. It uses the unofficial [Baileys](ht
 | Phase | Status |
 |-------|--------|
 | **0 — Scaffold** | Mock conversations, filter toggle, IPC bridge, chatcn UI |
-| 1 — Baileys session | QR auth, reconnect |
+| **1 — Baileys session** | QR auth, reconnect, session in `~/.config/whatsapp-desktop/baileys-auth` |
 | 2 — Chats & messages | SQLite, live sync |
 | 3 — Media | Download, send/receive |
 | 4 — Polish | Notifications, AppImage, read receipts |
 
-## Features (Phase 0)
+## Features
 
+### Phase 0
 - Split inbox layout (conversation list + active chat)
 - **All / DMs / Groups** filter toggle under search (persisted via electron-store)
 - Search within filtered conversations
-- Mock data: 2 DMs + 2 groups
+- Dark mode (light / dark / system)
 - Typed IPC via preload `contextBridge` (Baileys stays in main process only)
+
+### Phase 1
+- QR code linking on first launch (scan with WhatsApp → Linked devices)
+- Session persisted under `~/.config/whatsapp-desktop/baileys-auth/`
+- Auto-reconnect on launch and after disconnects
+- Connection error UI with retry / clear session
+- Mock chats still shown after connect (real sync in Phase 2)
 
 ## Requirements
 

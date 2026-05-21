@@ -2,6 +2,7 @@ import { app, BrowserWindow, shell } from 'electron'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import { registerIpcHandlers } from './ipc'
+import { initConnectionBridge, startWhatsApp } from './connection-bridge'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -57,6 +58,8 @@ async function createWindow() {
 
 app.whenReady().then(() => {
   registerIpcHandlers()
+  initConnectionBridge()
+  void startWhatsApp()
   createWindow()
 })
 
