@@ -1,27 +1,56 @@
 # WhatsZapp
 
-A desktop WhatsApp client for Linux and Windows. Messages live in a local SQLite database on your machine, so you can search, script, and back them up without asking Meta for permission.
+**WhatsApp on your desktop, built for the AI you choose.**
+
+WhatsZapp is an AI-native desktop client for Linux and Windows. Every message syncs into a local SQLite database on your machine. Your scripts, agents, and models can read that data today. Meta's assistant cannot.
 
 ![WhatsZapp screenshot](screenshot.png)
 
-## Why this exists
+## Why WhatsZapp instead of Meta AI?
 
-**Linux deserves a real app.** WhatsApp Web in a browser tab works, but it is easy to lose in a sea of tabs, hard to minimize to the tray, and heavier than it needs to be. WhatsZapp is an Electron app with a proper window, system theme support, and startup that does not feel like opening another website.
+Meta's AI lives inside their app. It suggests replies, pushes bots into your inbox, and runs on their servers with their rules. You cannot point it at a local model, pipe your full chat history into your own stack, or let an agent act on your inbox without sending everything through Meta first.
 
-**No built-in AI assistant.** The official client keeps adding bots, suggested replies, and features you did not ask for. WhatsZapp is just chat. If you want AI on your messages later, you can plug in your own model and point it at the local database.
+WhatsZapp flips that:
 
-**Your data should be yours.** Every message syncs into SQLite on disk. You can query it with SQL, back it up as a single file, or build tools on top of it. Sending from scripts, webhooks, and a CLI are planned; reading is available today.
+| What you want | Meta AI | WhatsZapp |
+|---------------|---------|-------------|
+| AI on your terms | Their model, their UI | Bring your own model and API keys (roadmap) |
+| Full history for agents | Locked in the app | Plain SQLite you can query with SQL today |
+| Automate replies and workflows | Limited, inside WhatsApp | Agent API, webhooks, CLI (roadmap) |
+| Privacy for sensitive chats | Processed on Meta's stack | Data stays on disk; only WhatsApp servers for sync |
+| No unsolicited AI in the UI | Bots, banners, suggested replies | Chat first. AI when you wire it up |
+
+WhatsZapp does not ship a chatbot in your sidebar. It ships the **foundation** Meta will never give you: a real desktop app plus a database your tools can actually use.
+
+## What AI-native means here
+
+**Today:** Every message lands in `~/.config/whatsapp-desktop/whatsapp.db`. WAL mode, fast sync, one file to back up or copy. You can already inspect chats with SQL, build dashboards, or feed exports into whatever model stack you run.
+
+**Coming (see [Roadmap](#roadmap)):**
+
+- **Bring-your-own AI** — Ollama, OpenAI, Anthropic, or whatever you run. Your keys, your prompts, your policy.
+- **Agent API** — Local HTTP / MCP so agents can search threads, summarize groups, and draft replies without a browser tab.
+- **Smart inbox** — Rules and filters you define (priority contacts, mute patterns, auto-labels).
+- **Programmatic send** — Reply from scripts, cron, or your backend.
+- **Webhooks** — Trigger automations when a message arrives.
+- **Reply from the terminal** — One command to answer without opening the window.
+
+That is the gap Meta AI cannot close: they optimize for engagement inside WhatsApp. WhatsZapp optimizes for **your** automation stack outside it.
+
+## Desktop app (not a browser tab)
+
+Linux and Windows get a proper Electron window: system theme, split inbox inspired by macOS Messages, tray-friendly workflow (tray icon on the roadmap). No tab lost among twenty others, no "please keep this tab open" energy.
 
 ## Features
 
-- Split inbox UI inspired by macOS Messages (sent bubbles, sidebar, smooth scrolling)
+- Split inbox UI (sent bubbles, sidebar, smooth scrolling)
 - Filter by All, DMs, or Groups, plus in-app search
-- Contact names resolved when possible; push names shown when that is all WhatsApp provides
-- Group chats show sender name and avatar on each message
-- Unread badges update on new messages and clear when you open a chat
+- Contact names when available; push names when that is all WhatsApp provides
+- Group chats show sender name and avatar per message
+- Unread badges on new messages; clear when you open a chat
 - Dark, Light, or system theme
-- Local SQLite storage (WAL mode) for fast sync and external access
-- Relink flow when you get a new phone or your session expires (QR scan)
+- Local SQLite storage for sync and external access
+- Relink via QR when your session or phone changes
 
 ## Tech stack
 
@@ -39,7 +68,7 @@ A desktop WhatsApp client for Linux and Windows. Messages live in a local SQLite
 
 ### Pre-built releases
 
-Download from [**Releases**](https://github.com/laxman-patel/whatsapp-linux/releases):
+Download from [**Releases**](https://github.com/laxman-patel/WhatsZapp/releases):
 
 | Platform | File |
 |----------|------|
@@ -64,8 +93,8 @@ Run the `.exe` and follow the prompts. SmartScreen may flag the unsigned binary 
 **Requirements:** Node.js 20+, Linux or Windows (macOS works for dev; AppImage targets Linux)
 
 ```bash
-git clone https://github.com/laxman-patel/whatsapp-linux
-cd whatsapp-linux
+git clone https://github.com/laxman-patel/WhatsZapp.git
+cd WhatsZapp
 npm install   # postinstall rebuilds better-sqlite3 for Electron
 ```
 
@@ -106,7 +135,7 @@ Everything stays on your computer:
 
 On Windows, the same folder name lives under `%APPDATA%\whatsapp-desktop\`.
 
-The app only talks to WhatsApp's own servers for messaging. Nothing is sent to a third-party backend run by this project.
+The app talks to WhatsApp's servers for messaging only. This project does not run a cloud backend that sees your chats. When you add AI, you choose where that processing happens.
 
 ## Project structure
 
