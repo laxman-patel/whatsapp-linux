@@ -24,18 +24,23 @@ The official desktop app doesn't give you a file you can copy. WhatsZapp does: o
 
 ---
 
-## Features
+## What you get today
 
-- **macOS Messages-style UI** — blue sent bubbles, split inbox, smooth scroll
-- **All / DMs / Groups** filter with live search
-- **Real contact names** — resolves LID-to-phone aliases, falls back gracefully to push name or number
-- **Profile pictures** — fetched and cached locally, served via a custom `wa-avatar://` protocol
-- **Unread badges** — cleared on open, incremented on live notify only (no badge spam during sync)
-- **Group sender identity** — per-message avatar and name in group chats
-- **Inline sync status** — small spinner next to "Messages" while history loads; tap to re-sync
-- **Dark / Light / System** theme, toggled from the title bar
-- **Local SQLite** — WAL mode, mmap cache, fast bulk inserts during history sync
-- **Relink button** — one click to clear session and scan a fresh QR code
+**Looks like iMessage, not a browser tab** — blue sent bubbles, a proper split inbox, and scrolling that doesn't fight you.
+
+**Filters that make sense** — All, DMs, or Groups, plus search when you need to find *that* conversation.
+
+**Names, not mystery numbers** — resolves contacts properly; if WhatsApp only gives a push name, you'll still know who it is.
+
+**Faces in group chats** — every group message shows who sent it, with avatar and name.
+
+**Unread counts that behave** — badge clears when you open a chat; only ticks up on new messages, not during a background sync.
+
+**Themes** — Dark, Light, or follow whatever your OS is doing.
+
+**Your data, on your disk** — every message in local SQLite (WAL mode, fast sync). Agents and scripts can read it today; more ways to *act* on it are coming.
+
+**One-tap relink** — new phone or session expired? Hit Relink, scan QR, you're back.
 
 ---
 
@@ -96,7 +101,7 @@ npm install         # also rebuilds better-sqlite3 for Electron via postinstall
 npm run dev
 ```
 
-Launches Vite dev server + Electron with hot-reload. On first launch a QR code appears — scan it in WhatsApp → Linked Devices.
+Launches Vite dev server + Electron with hot-reload. On first launch, scan the QR code from **WhatsApp → Settings → Linked Devices → Link a device**.
 
 ### Production build
 
@@ -116,17 +121,6 @@ git push origin v0.2.0
 ```
 
 GitHub Actions uploads the AppImage and Windows installer to the **Releases** tab automatically.
-
----
-
-## Linking your account
-
-1. Open WhatsZapp — a QR code screen appears.
-2. On your phone: **WhatsApp → Settings → Linked Devices → Link a device**.
-3. Scan the QR code.
-4. History syncs automatically in the background (progress shown beside **Messages**).
-
-To re-link: click **Relink** in the title bar. This clears the local session and database and shows a fresh QR.
 
 ---
 
@@ -169,12 +163,20 @@ src/
 
 ## Roadmap
 
+### AI & automation
+- [ ] **Bring-your-own AI** — plug in local models or your API of choice (not Meta's)
+- [ ] **Agent API** — local HTTP / MCP endpoint so agents can read and act on your inbox
+- [ ] **Smart inbox** — priority contacts, custom filters, rules
+- [ ] **Programmatic send** — send messages from scripts or your stack
+- [ ] **Webhooks** — fire events when messages arrive
+- [ ] **Reply-from-CLI** — one-liner replies from the terminal
+
+### Messaging polish
 - [ ] **Media** — download and render images, video, audio, documents
 - [ ] **Send media** — attach and send files from the composer
 - [ ] **Notifications** — OS-level notifications for new messages
 - [ ] **Read receipts** — mark messages as read via Baileys
 - [ ] **Tray icon** — minimize to system tray, badge count
-- [ ] **Programmatic API** — local HTTP or IPC endpoint for scripting
 - [ ] **Message search** — full-text search across SQLite
 - [ ] **Export** — one-click JSON/CSV export per chat
 
