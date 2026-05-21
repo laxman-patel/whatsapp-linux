@@ -92,17 +92,21 @@ export async function startWhatsApp(): Promise<void> {
     const sock = makeWASocket({
       version,
       auth: state,
-      logger: pino({ level: 'silent' }),
+      // info level surfaces Baileys' own history-sync diagnostics so we can
+      // tell whether decryption / download silently fails on 7.0 RC.
+      logger: pino({ level: process.env.BAILEYS_LOG_LEVEL ?? 'warn' }),
       printQRInTerminal: false,
-      // Baileys 7 RC quirk: with a custom browser tuple WhatsApp often refuses
-      // to push history. Use a recognised desktop identifier so the phone
-      // sends INITIAL_BOOTSTRAP + RECENT history right after pairing.
-      browser: Browsers.ubuntu('Chrome'),
+      // Per official Baileys docs: desktop-identified browsers receive full
+      // history. Anything else (custom tuple, mobile identifier) makes WA
+      // return 'complete' with no actual set events on 7.0 RC.
+      browser: Browsers.macOS('Desktop'),
       // syncFullHistory must be true in 7.x RCs to trigger history sync at
-      // all; we filter what we actually process via shouldSyncHistoryMessage.
+      // all; we still filter the heavy FULL type via shouldSyncHistoryMessage.
       syncFullHistory: true,
       shouldSyncHistoryMessage: shouldSyncFastHistory,
-      markOnlineOnConnect: false,
+      // Required for the phone to keep pushing history; passive presence
+      // sometimes makes WA short-circuit the bootstrap.
+      markOnlineOnConnect: true,
       getMessage: async () => undefined,
     })
 
@@ -127,6 +131,37 @@ export async function startWhatsApp(): Promise<void> {
     })
     sock.ev.on('chats.upsert', (chats) => {
       console.log('[baileys] chats.upsert count=' + chats.length)
+    })
+    sock.ev.on('contacts.upsert', (contacts) => {
+      console.log('[baileys] contacts.upsert count=' + contacts.length)
+    })
+    sock.ev.on('messages.upsert', ({ messages, type }) => {
+      console.log(
+        '[baileys] messages.upsert',
+        'count=' + messages.length,
+        'type=' + type,
+      )
+    })
+
+    // If neither chats nor history arrive within 15s after connect we log a
+    // clear diagnostic so it's obvious WA is short-circuiting the bootstrap.
+    let sawAnyData = false
+    const markData = () => {
+      sawAnyData = true
+    }
+    sock.ev.on('messaging-history.set', markData)
+    sock.ev.on('chats.upsert', markData)
+    sock.ev.on('contacts.upsert', markData)
+    sock.ev.on('connection.update', (u) => {
+      if (u.connection === 'open') {
+        setTimeout(() => {
+          if (!sawAnyData) {
+            console.warn(
+              '[baileys] no chats / contacts / history after 15s. WhatsApp may have already synced this device. Try Relink and on the phone first remove the existing linked device.',
+            )
+          }
+        }, 15000)
+      }
     })
 
     sock.ev.on('connection.update', async (update) => {
