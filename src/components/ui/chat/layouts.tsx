@@ -15,6 +15,7 @@ import {
 import type { ChatMessageData, ChatUser, ChatTheme, TypingUser } from "./types"
 import { ChatProvider } from "./chat"
 import { ChatMessages, ChatComposer } from "./chat"
+import { AvatarCircle } from "@/components/AvatarCircle"
 
 // ─── Shared: ChatHeader ───────────────────────────────────────────────────────
 
@@ -78,21 +79,7 @@ function ConversationItem({
       )}
     >
       <div className="relative shrink-0">
-        <div className="flex size-11 items-center justify-center overflow-hidden rounded-full bg-[var(--chat-bubble-incoming)] text-[13px] font-semibold text-[var(--chat-text-secondary)]">
-          {convo.avatar ? (
-            <img
-              src={convo.avatar}
-              alt={convo.title}
-              className="size-full object-cover"
-              draggable={false}
-              onError={(e) => {
-                ;(e.target as HTMLImageElement).style.display = 'none'
-              }}
-            />
-          ) : (
-            convo.title.charAt(0).toUpperCase()
-          )}
-        </div>
+        <AvatarCircle src={convo.avatar} name={convo.title} size="lg" />
         {convo.presence === "online" && (
           <div className="absolute -bottom-0.5 -right-0.5 size-[10px] rounded-full border-2 border-[var(--chat-bg-sidebar)] bg-[var(--chat-green)]" />
         )}
@@ -169,7 +156,7 @@ function FullMessenger({
             </div>
           </div>
           {/* Conversation list */}
-          <div className="flex-1 overflow-y-auto py-1">
+          <div className="wa-scrollbar flex-1 overflow-y-auto py-1">
             {conversations.map((c) => (
               <ConversationItem
                 key={c.id}

@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { forwardRef, useCallback, useMemo } from 'react'
 import { Loader2, RefreshCw, Search } from 'lucide-react'
 import { Virtuoso } from 'react-virtuoso'
 import {
@@ -11,6 +11,7 @@ import {
   type SidebarConversation,
 } from '@/components/ui/chat'
 import { ChatFilterToggle } from '@/components/ChatFilterToggle'
+import { AvatarCircle } from '@/components/AvatarCircle'
 import { cn } from '@/lib/utils'
 import type { ChatFilter, SyncProgressPayload } from '@/shared/ipc'
 
@@ -30,6 +31,13 @@ interface WhatsAppMessengerProps {
   onTriggerResync: () => void
   className?: string
 }
+
+const VirtuosoScroller = forwardRef<
+  HTMLDivElement,
+  React.HTMLAttributes<HTMLDivElement>
+>(function VirtuosoScroller(props, ref) {
+  return <div {...props} ref={ref} className={cn(props.className, 'wa-scrollbar')} />
+})
 
 function SyncIconButton({
   sync,
@@ -153,6 +161,7 @@ export function WhatsAppMessenger({
                 style={{ height: '100%' }}
                 data={conversations}
                 itemContent={itemContent}
+                components={{ Scroller: VirtuosoScroller }}
               />
             )}
           </div>
@@ -165,21 +174,11 @@ export function WhatsAppMessenger({
                 title={activeConvo.title}
                 subtitle={headerSubtitle}
                 avatar={
-                  <div className="flex size-10 items-center justify-center overflow-hidden rounded-full bg-[var(--chat-bubble-incoming)] text-sm font-semibold text-[var(--chat-text-primary)]">
-                    {activeConvo.avatar ? (
-                      <img
-                        src={activeConvo.avatar}
-                        alt={activeConvo.title}
-                        className="size-full object-cover"
-                        draggable={false}
-                        onError={(e) => {
-                          ;(e.target as HTMLImageElement).style.display = 'none'
-                        }}
-                      />
-                    ) : (
-                      activeConvo.title.charAt(0).toUpperCase()
-                    )}
-                  </div>
+                  <AvatarCircle
+                    src={activeConvo.avatar}
+                    name={activeConvo.title}
+                    size="md"
+                  />
                 }
               />
               <ChatMessages

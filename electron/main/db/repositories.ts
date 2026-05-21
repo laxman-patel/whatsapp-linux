@@ -1,5 +1,6 @@
 import type { Chat, Contact } from '@whiskeysockets/baileys'
 import type { ChatFilter, ChatSummary, MessageRecord } from '../../../src/shared/ipc'
+import { avatarUrlForJid } from '../../../src/shared/avatar'
 import { getDb } from './index'
 import {
   chatJidIsGroup,
@@ -581,7 +582,7 @@ export function listChatsFromDb(filter: ChatFilter, search?: string): ChatSummar
     lastMessage: row.last_message ?? undefined,
     lastMessageTime: row.last_message_time ?? undefined,
     unreadCount: row.unread_count,
-    avatarUrl: row.avatar_path ? `wa-avatar://${encodeURIComponent(row.jid)}` : undefined,
+    avatarUrl: avatarUrlForJid(row.jid),
   }))
 }
 

@@ -1,28 +1,28 @@
-import { app, net, protocol } from 'electron'
+import { app, protocol } from 'electron'
 import path from 'node:path'
 import fs from 'node:fs/promises'
 import crypto from 'node:crypto'
-import { pathToFileURL } from 'node:url'
 import { getChatAvatarPath, setChatAvatarPath } from '../db/repositories'
 import { broadcast } from '../broadcast'
 import { IPC_CHANNELS } from '../../../src/shared/ipc'
 import { getSocket } from './client'
 import { isRenderableChatJid } from './message-utils'
 
+// Re-export for main-side URL building (shared module is renderer-safe).
+export { avatarUrlForJid } from '../../../src/shared/avatar'
+
 /**
  * Avatar (WhatsApp profile picture) cache.
  *
- * Calls `sock.profilePictureUrl(jid, 'preview')` to discover the current photo
- * URL, downloads it to disk, and remembers the local path in the chats table.
- *
- * Strict rate-limit because WhatsApp will outright stop serving these (and may
- * temporarily ratelimit the account) if we hammer too fast.
+ * Calls `sock.profilePictureUrl(jid)` to discover the current photo URL,
+ * downloads it to disk, and serves it via the `wa-avatar://` protocol.
  */
 
-const AVATAR_FETCH_CONCURRENCY = 2
-const AVATAR_FETCH_DELAY_MS = 250
+const AVATAR_FETCH_CONCURRENCY = 3
+const AVATAR_FETCH_DELAY_MS = 200
+const AVATAR_FETCH_TIMEOUT_MS = 20_000
 const queue: string[] = []
-const seen = new Set<string>()
+const inFlight = new Set<string>()
 let running = 0
 let drainTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -30,27 +30,53 @@ function avatarDir(): string {
   return path.join(app.getPath('userData'), 'avatars')
 }
 
-function avatarFilePath(jid: string): string {
+export function avatarFilePath(jid: string): string {
   const hash = crypto.createHash('sha1').update(jid).digest('hex')
   return path.join(avatarDir(), `${hash}.jpg`)
+}
+
+function parseJidFromRequest(url: string): string | null {
+  try {
+    const parsed = new URL(url)
+    // wa-avatar://d/<encoded-jid>
+    const encoded = parsed.pathname.replace(/^\/+/, '')
+    if (!encoded) return null
+    return decodeURIComponent(encoded)
+  } catch {
+    return null
+  }
+}
+
+async function resolveAvatarFile(jid: string): Promise<string | null> {
+  const candidates = [getChatAvatarPath(jid), avatarFilePath(jid)].filter(Boolean) as string[]
+  for (const filePath of candidates) {
+    try {
+      await fs.access(filePath)
+      return filePath
+    } catch {
+      /* try next */
+    }
+  }
+  return null
 }
 
 export function registerAvatarProtocol(): void {
   protocol.handle('wa-avatar', async (request) => {
     try {
-      const url = new URL(request.url)
-      // wa-avatar://<encoded jid>
-      const jid = decodeURIComponent(url.hostname || url.pathname.replace(/^\/+/, ''))
-      const stored = getChatAvatarPath(jid)
-      if (!stored) return new Response('Not found', { status: 404 })
+      const jid = parseJidFromRequest(request.url)
+      if (!jid) return new Response('Bad request', { status: 400 })
 
-      try {
-        await fs.access(stored)
-      } catch {
-        return new Response('Not found', { status: 404 })
-      }
+      const filePath = await resolveAvatarFile(jid)
+      if (!filePath) return new Response('Not found', { status: 404 })
 
-      return net.fetch(pathToFileURL(stored).toString())
+      const data = await fs.readFile(filePath)
+      return new Response(data, {
+        status: 200,
+        headers: {
+          'Content-Type': 'image/jpeg',
+          'Cache-Control': 'public, max-age=86400',
+        },
+      })
     } catch (err) {
       console.error('[avatars] protocol error:', err)
       return new Response('Error', { status: 500 })
@@ -58,16 +84,26 @@ export function registerAvatarProtocol(): void {
   })
 }
 
+export async function hydrateAvatarCacheFromDisk(): Promise<void> {
+  try {
+    const dir = avatarDir()
+    const files = await fs.readdir(dir)
+    for (const file of files) {
+      if (!file.endsWith('.jpg')) continue
+      // Files are keyed by sha1(jid); DB rows are reconciled on next successful fetch.
+      void file
+    }
+  } catch {
+    /* no cache dir yet */
+  }
+}
+
 export function queueAvatarFetches(jids: string[]): void {
   let added = false
   for (const jid of jids) {
     if (!isRenderableChatJid(jid)) continue
-    if (seen.has(jid)) continue
-    if (getChatAvatarPath(jid)) {
-      seen.add(jid)
-      continue
-    }
-    seen.add(jid)
+    if (inFlight.has(jid) || queue.includes(jid)) continue
+    if (getChatAvatarPath(jid)) continue
     queue.push(jid)
     added = true
   }
@@ -87,8 +123,10 @@ async function drain(): Promise<void> {
     const jid = queue.shift()
     if (!jid) break
     running++
+    inFlight.add(jid)
     void fetchOne(jid).finally(() => {
       running--
+      inFlight.delete(jid)
       if (queue.length > 0) {
         setTimeout(() => void drain(), AVATAR_FETCH_DELAY_MS)
       }
@@ -96,16 +134,34 @@ async function drain(): Promise<void> {
   }
 }
 
+async function fileExists(filePath: string): Promise<boolean> {
+  try {
+    await fs.access(filePath)
+    return true
+  } catch {
+    return false
+  }
+}
+
 async function fetchOne(jid: string): Promise<void> {
   const sock = getSocket()
   if (!sock) return
 
-  let url: string | undefined
-  try {
-    url = await sock.profilePictureUrl(jid, 'preview')
-  } catch {
-    // 401 / 404 / privacy blocked. Mark seen so we don't retry every chunk.
+  const filePath = avatarFilePath(jid)
+  if (await fileExists(filePath)) {
+    setChatAvatarPath(jid, filePath)
+    broadcast(IPC_CHANNELS.chatsUpdated)
     return
+  }
+
+  let url: string | undefined
+  for (const type of ['image', 'preview'] as const) {
+    try {
+      url = await sock.profilePictureUrl(jid, type, AVATAR_FETCH_TIMEOUT_MS)
+      if (url) break
+    } catch {
+      /* try next size / privacy block */
+    }
   }
   if (!url) return
 
@@ -114,10 +170,9 @@ async function fetchOne(jid: string): Promise<void> {
     const response = await fetch(url)
     if (!response.ok) return
     const buffer = Buffer.from(await response.arrayBuffer())
-    const filePath = avatarFilePath(jid)
+    if (buffer.length < 64) return
     await fs.writeFile(filePath, buffer)
     setChatAvatarPath(jid, filePath)
-    // Tell the renderer to re-pull the sidebar so the new avatar URL appears.
     broadcast(IPC_CHANNELS.chatsUpdated)
   } catch (err) {
     console.warn('[avatars] failed to fetch', jid, err)
@@ -126,5 +181,5 @@ async function fetchOne(jid: string): Promise<void> {
 
 export function resetAvatarCache(): void {
   queue.length = 0
-  seen.clear()
+  inFlight.clear()
 }

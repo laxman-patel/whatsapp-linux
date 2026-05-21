@@ -1021,7 +1021,7 @@ function ChatMessages({
       {/* Scrollable area */}
       <div
         ref={containerRef}
-        className="flex-1 overflow-y-auto px-4 py-4"
+        className="wa-scrollbar flex-1 overflow-y-auto px-4 py-4"
         role="log"
         aria-live="polite"
         data-suppress-message-actions={!messageActionsEnabled}
