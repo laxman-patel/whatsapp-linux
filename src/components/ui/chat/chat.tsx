@@ -41,6 +41,7 @@ import {
   useTypingIndicator,
   formatTimestamp,
 } from "./hooks"
+import { AvatarCircle } from "@/components/AvatarCircle"
 
 // ─── Context ──────────────────────────────────────────────────────────────────
 
@@ -410,16 +411,12 @@ function ChatMessage({
       {/* Avatar slot — 32px, only for incoming, only on last/solo */}
       {!isOutgoing ? (
         <div className="w-8 shrink-0">
-          {showAvatar && message.senderAvatar ? (
-            <img
+          {showAvatar ? (
+            <AvatarCircle
               src={message.senderAvatar}
-              alt={message.senderName}
-              className="size-8 rounded-full object-cover"
+              name={message.senderName}
+              size="sm"
             />
-          ) : showAvatar ? (
-            <div className="flex size-8 items-center justify-center rounded-full bg-[var(--chat-bubble-incoming)] text-[11px] font-semibold text-[var(--chat-text-secondary)]">
-              {message.senderName.charAt(0).toUpperCase()}
-            </div>
           ) : null}
         </div>
       ) : null}
@@ -791,10 +788,11 @@ function ChatReadReceipts({
 
 interface ChatMessageGroupProps {
   group: MessageGroup
+  showSenderNames?: boolean
   className?: string
 }
 
-function ChatMessageGroup({ group, className }: ChatMessageGroupProps) {
+function ChatMessageGroup({ group, showSenderNames = false, className }: ChatMessageGroupProps) {
   const len = group.messages.length
 
   return (
@@ -821,7 +819,7 @@ function ChatMessageGroup({ group, className }: ChatMessageGroupProps) {
             message={msg}
             isOutgoing={group.isOutgoing}
             position={position}
-            showSender={i === 0}
+            showSender={showSenderNames && i === 0 && !group.isOutgoing}
             showAvatar={position === "solo" || position === "last"}
           />
         )
@@ -989,6 +987,8 @@ interface ChatMessagesProps {
   hasMore?: boolean
   /** Changes when switching chats — used to suppress hover toolbar flash */
   conversationKey?: string
+  /** Show per-sender name + avatar on incoming bubbles (group chats) */
+  showGroupSenders?: boolean
 }
 
 function ChatMessages({
@@ -996,6 +996,7 @@ function ChatMessages({
   typingUsers = [],
   className,
   conversationKey,
+  showGroupSenders = false,
 }: ChatMessagesProps) {
   const { currentUser, messageGroupingInterval } = useChatContext()
   const { containerRef, scrollToBottom, isAtBottom, unseenCount } =
@@ -1049,6 +1050,7 @@ function ChatMessages({
                   <ChatMessageGroup
                     key={`group-${item.group.messages[0].id}`}
                     group={item.group}
+                    showSenderNames={showGroupSenders}
                   />
                 )
             }

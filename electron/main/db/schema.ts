@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 2
+export const SCHEMA_VERSION = 4
 
 export const MIGRATIONS: string[] = [
   `CREATE TABLE IF NOT EXISTS chats (
@@ -18,6 +18,12 @@ export const MIGRATIONS: string[] = [
     push_name TEXT,
     updated_at INTEGER NOT NULL
   )`,
+  `CREATE TABLE IF NOT EXISTS contact_aliases (
+    lid TEXT PRIMARY KEY,
+    jid TEXT NOT NULL,
+    updated_at INTEGER NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_contact_aliases_jid ON contact_aliases(jid)`,
   `CREATE TABLE IF NOT EXISTS messages (
     id TEXT PRIMARY KEY,
     chat_jid TEXT NOT NULL,
@@ -30,6 +36,7 @@ export const MIGRATIONS: string[] = [
     FOREIGN KEY (chat_jid) REFERENCES chats(jid)
   )`,
   `CREATE INDEX IF NOT EXISTS idx_messages_chat_time ON messages(chat_jid, timestamp)`,
+  `CREATE INDEX IF NOT EXISTS idx_messages_sender ON messages(sender_id)`,
   `CREATE TABLE IF NOT EXISTS meta (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL

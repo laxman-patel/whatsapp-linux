@@ -14,6 +14,7 @@ import {
   listChatsMissingAvatar,
   listMessagesFromDb,
   markChatRead,
+  repairGroupChatSenderNames,
   upsertGroupInfo,
 } from './db/repositories'
 import { chatJidIsGroup } from './baileys/message-utils'
@@ -21,10 +22,12 @@ import {
   beginSync,
   getSyncProgress,
   scheduleChatsNotify,
+  scheduleMessagesNotify,
   scheduleSyncIdleFallback,
 } from './sync-progress'
 import { setActiveChat } from './active-chat'
 import { queueAvatarFetches } from './baileys/avatars'
+import { hydrateContactAliasesFromPhonebook } from './baileys/contact-aliases'
 
 interface StoredSettings extends Record<string, ChatFilter | ColorScheme> {
   chatFilter: ChatFilter
@@ -70,15 +73,36 @@ export function registerIpcHandlers() {
     if (!chatJidIsGroup(jid)) return null
 
     const sock = getSocket()
-    if (!sock) return null
+    if (!sock) {
+      repairGroupChatSenderNames(jid)
+      scheduleMessagesNotify(jid)
+      scheduleChatsNotify(true)
+      return null
+    }
 
     try {
       const meta = await sock.groupMetadata(jid)
       const count = meta.participants?.length ?? 0
       upsertGroupInfo(meta)
+      void hydrateContactAliasesFromPhonebook(sock)
+      queueAvatarFetches(
+        (meta.participants ?? [])
+          .flatMap((p) => [
+            p.id,
+            'jid' in p ? (p as { jid?: string }).jid : undefined,
+            'lid' in p ? (p as { lid?: string }).lid : undefined,
+          ])
+          .filter(Boolean) as string[],
+      )
+      repairGroupChatSenderNames(jid)
+      scheduleMessagesNotify(jid)
+      scheduleChatsNotify(true)
       return { participantCount: count }
     } catch {
-      return null
+      repairGroupChatSenderNames(jid)
+      scheduleMessagesNotify(jid)
+      scheduleChatsNotify(true)
+      return { participantCount: undefined }
     }
   })
 
@@ -99,6 +123,7 @@ export function registerIpcHandlers() {
     // Re-kick avatar discovery and bump the sync banner so the user gets
     // visible feedback when they hit the refresh icon.
     queueAvatarFetches(listChatsMissingAvatar())
+    void hydrateContactAliasesFromPhonebook(getSocket())
     beginSync()
     scheduleSyncIdleFallback(8000)
     scheduleChatsNotify(true)

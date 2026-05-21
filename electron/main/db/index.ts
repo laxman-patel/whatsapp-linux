@@ -48,6 +48,7 @@ export function clearDatabase(): void {
   database.exec('DELETE FROM messages')
   database.exec('DELETE FROM chats')
   database.exec('DELETE FROM contacts')
+  database.exec('DELETE FROM contact_aliases')
 }
 
 function applyIncrementalMigrations(db: Database.Database): void {
@@ -63,4 +64,15 @@ function applyIncrementalMigrations(db: Database.Database): void {
       throw err
     }
   }
+
+  // v2 -> v3: link WhatsApp LIDs to phone JIDs for saved-name lookup.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS contact_aliases (
+      lid TEXT PRIMARY KEY,
+      jid TEXT NOT NULL,
+      updated_at INTEGER NOT NULL
+    )
+  `)
+  db.exec('CREATE INDEX IF NOT EXISTS idx_contact_aliases_jid ON contact_aliases(jid)')
+  db.exec('CREATE INDEX IF NOT EXISTS idx_messages_sender ON messages(sender_id)')
 }

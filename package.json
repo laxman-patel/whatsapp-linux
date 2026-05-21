@@ -1,7 +1,7 @@
 {
-  "name": "whatsapp-desktop",
+  "name": "zap",
   "version": "0.1.0",
-  "description": "Personal WhatsApp desktop client for Linux (Electron + Baileys)",
+  "description": "Fast, clean, programmable WhatsApp desktop client for Linux and Windows",
   "main": "dist-electron/main/index.js",
   "author": "Laxman",
   "license": "MIT",

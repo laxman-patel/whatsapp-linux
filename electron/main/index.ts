@@ -6,6 +6,15 @@ import { registerIpcHandlers } from './ipc'
 import { initConnectionBridge, startWhatsApp } from './connection-bridge'
 import { registerAvatarProtocol } from './baileys/avatars'
 
+// Some Linux/Arch GPU driver stacks make Electron's GPU process fatal during
+// startup ("GPU process isn't usable"). Keep rendering on the CPU so the app
+// starts reliably.
+if (process.platform === 'linux') {
+  app.disableHardwareAcceleration()
+  app.commandLine.appendSwitch('disable-gpu')
+  app.commandLine.appendSwitch('disable-software-rasterizer')
+}
+
 // Custom scheme used to serve cached profile pictures to the renderer.
 protocol.registerSchemesAsPrivileged([
   {

@@ -1,6 +1,7 @@
 import { format, isToday, isYesterday } from 'date-fns'
 import type { ChatMessageData, ChatUser } from '@/components/ui/chat'
 import type { ChatSummary, MessageRecord } from '@/shared/ipc'
+import { avatarUrlForJid } from '@/shared/avatar'
 
 export const CURRENT_USER: ChatUser = {
   id: 'me@s.whatsapp.net',
@@ -36,10 +37,10 @@ export function messageToChatcn(
     id: msg.id,
     senderId: msg.isFromMe ? CURRENT_USER.id : msg.senderId,
     senderName: msg.isFromMe ? 'You' : msg.senderName,
+    senderAvatar:
+      isGroup && !msg.isFromMe ? avatarUrlForJid(msg.senderId) : undefined,
     text: msg.text,
     timestamp: msg.timestamp,
     status: msg.status,
-    // Show sender name above bubble in groups for incoming messages
-    ...(isGroup && !msg.isFromMe ? {} : {}),
   }
 }

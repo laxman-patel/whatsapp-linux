@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+
+jobs:
+  typecheck:
+    name: TypeScript check
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies (skip native rebuild — not needed for tsc)
+        env:
+          npm_config_ignore_scripts: 'true'
+        run: npm ci
+
+      - name: TypeScript typecheck
+        run: npx tsc --noEmit

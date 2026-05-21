@@ -24,6 +24,7 @@ import {
   upsertGroupInfo,
 } from '../db/repositories'
 import { queueAvatarFetches, resetAvatarCache } from './avatars'
+import { hydrateContactAliasesFromPhonebook } from './contact-aliases'
 
 export interface ConnectionPayload {
   status: ConnectionStatus
@@ -211,6 +212,7 @@ export async function startWhatsApp(): Promise<void> {
         scheduleSyncIdleFallback(30000)
         broadcast(IPC_CHANNELS.chatsUpdated)
         void hydrateMissingGroupNames(sock)
+        void hydrateContactAliasesFromPhonebook(sock)
         // Catch up avatars for chats that already exist in the DB from a
         // previous launch (or that were just inserted from history sync).
         queueAvatarFetches(listChatsMissingAvatar())

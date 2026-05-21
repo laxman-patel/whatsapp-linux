@@ -185,6 +185,7 @@ export function WhatsAppMessenger({
                 key={activeConversationId}
                 conversationKey={activeConversationId}
                 messages={messages}
+                showGroupSenders={activeConvo.isGroup}
                 className="min-h-0 flex-1"
               />
               <ChatComposer onSend={onSend} placeholder={composerPlaceholder} />

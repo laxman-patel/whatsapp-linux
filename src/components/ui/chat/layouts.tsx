@@ -72,7 +72,7 @@ function ConversationItem({
     <button
       onClick={onClick}
       className={cn(
-        "mx-1 flex w-[calc(100%-8px)] items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors",
+        "mx-1 mb-2 flex w-[calc(100%-8px)] items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors",
         isActive
           ? 'bg-[#007AFF]/15 ring-1 ring-[#007AFF]/30 dark:bg-[#0A84FF]/20 dark:ring-[#0A84FF]/40'
           : 'hover:bg-[var(--chat-accent-soft)]'
@@ -94,8 +94,13 @@ function ConversationItem({
         <div className="flex items-center justify-between">
           <span className="truncate text-[13px] text-[var(--chat-text-secondary)]">{convo.lastMessage}</span>
           {(convo.unreadCount ?? 0) > 0 && (
-            <span className="ml-2 flex size-[18px] shrink-0 items-center justify-center rounded-full bg-[var(--chat-red)] text-[11px] font-bold text-white">
-              {convo.unreadCount! > 99 ? "99+" : convo.unreadCount}
+            <span
+              className={cn(
+                'ml-2 flex h-[18px] shrink-0 items-center justify-center rounded-full bg-[var(--chat-red)] px-1.5 text-[10px] font-bold leading-none tabular-nums text-white',
+                (convo.unreadCount ?? 0) > 9 ? 'min-w-[22px]' : 'min-w-[18px]',
+              )}
+            >
+              {(convo.unreadCount ?? 0) > 99 ? '99+' : convo.unreadCount}
             </span>
           )}
         </div>

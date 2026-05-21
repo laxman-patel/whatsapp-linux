@@ -6,7 +6,6 @@ import { getChatAvatarPath, setChatAvatarPath } from '../db/repositories'
 import { broadcast } from '../broadcast'
 import { IPC_CHANNELS } from '../../../src/shared/ipc'
 import { getSocket } from './client'
-import { isRenderableChatJid } from './message-utils'
 
 // Re-export for main-side URL building (shared module is renderer-safe).
 export { avatarUrlForJid } from '../../../src/shared/avatar'
@@ -101,7 +100,11 @@ export async function hydrateAvatarCacheFromDisk(): Promise<void> {
 export function queueAvatarFetches(jids: string[]): void {
   let added = false
   for (const jid of jids) {
-    if (!isRenderableChatJid(jid)) continue
+    const canFetchAvatar =
+      jid.endsWith('@s.whatsapp.net') ||
+      jid.endsWith('@g.us') ||
+      jid.endsWith('@lid')
+    if (!canFetchAvatar) continue
     if (inFlight.has(jid) || queue.includes(jid)) continue
     if (getChatAvatarPath(jid)) continue
     queue.push(jid)

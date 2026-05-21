@@ -3,14 +3,17 @@ import { jidNormalizedUser } from '@whiskeysockets/baileys'
 import {
   deleteChats,
   incrementChatUnread,
+  linkContactAlias,
   upsertChatFromBaileys,
   upsertChatsFromBaileys,
   upsertContacts,
+  repairGroupSenderNamesForJids,
   upsertGroupInfo,
   upsertMessageFromBaileys,
 } from '../db/repositories'
 import { getActiveChat } from '../active-chat'
 import { queueAvatarFetches } from './avatars'
+import { chatJidIsGroup } from './message-utils'
 import {
   onHistorySyncComplete,
   scheduleChatsNotify,
@@ -67,6 +70,11 @@ export function registerBaileysHandlers(sock: WASocket): void {
     scheduleChatsNotify(true)
   })
 
+  sock.ev.on('chats.phoneNumberShare', ({ lid, jid }) => {
+    repairGroupSenderNamesForJids(linkContactAlias(lid, jid))
+    scheduleChatsNotify(true)
+  })
+
   sock.ev.on('contacts.upsert', (contacts) => {
     upsertContacts(contacts)
     scheduleChatsNotify()
@@ -78,6 +86,8 @@ export function registerBaileysHandlers(sock: WASocket): void {
         .filter((c) => c.id)
         .map((c) => ({
           id: c.id!,
+          jid: 'jid' in c ? (c as { jid?: string }).jid : undefined,
+          lid: 'lid' in c ? (c as { lid?: string }).lid : undefined,
           name: c.name,
           notify: c.notify,
           verifiedName: c.verifiedName,
@@ -93,6 +103,15 @@ export function registerBaileysHandlers(sock: WASocket): void {
         const record = upsertMessageFromBaileys(msg, meId)
         if (!record) continue
         scheduleMessagesNotify(record.chatJid)
+
+        if (
+          chatJidIsGroup(record.chatJid) &&
+          !record.isFromMe &&
+          (record.senderId.endsWith('@s.whatsapp.net') ||
+            record.senderId.endsWith('@lid'))
+        ) {
+          queueAvatarFetches([record.senderId])
+        }
 
         // Only bump the unread badge for genuinely-new live notifications
         // (type === 'notify'), and only when the user isn't already viewing
