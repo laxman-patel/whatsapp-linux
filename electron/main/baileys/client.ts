@@ -1,4 +1,5 @@
 import makeWASocket, {
+  Browsers,
   DisconnectReason,
   fetchLatestBaileysVersion,
   proto,
@@ -93,8 +94,13 @@ export async function startWhatsApp(): Promise<void> {
       auth: state,
       logger: pino({ level: 'silent' }),
       printQRInTerminal: false,
-      browser: ['WhatsApp Desktop', 'Linux', '1.0.0'],
-      syncFullHistory: false,
+      // Baileys 7 RC quirk: with a custom browser tuple WhatsApp often refuses
+      // to push history. Use a recognised desktop identifier so the phone
+      // sends INITIAL_BOOTSTRAP + RECENT history right after pairing.
+      browser: Browsers.ubuntu('Chrome'),
+      // syncFullHistory must be true in 7.x RCs to trigger history sync at
+      // all; we filter what we actually process via shouldSyncHistoryMessage.
+      syncFullHistory: true,
       shouldSyncHistoryMessage: shouldSyncFastHistory,
       markOnlineOnConnect: false,
       getMessage: async () => undefined,
@@ -103,6 +109,25 @@ export async function startWhatsApp(): Promise<void> {
     socket = sock
     registerBaileysHandlers(sock)
     sock.ev.on('creds.update', saveCreds)
+
+    // Diagnostics so we can see why history doesn't arrive.
+    sock.ev.on('messaging-history.set', (data) => {
+      console.log(
+        '[baileys] messaging-history.set',
+        'chats=' + (data.chats?.length ?? 0),
+        'contacts=' + (data.contacts?.length ?? 0),
+        'messages=' + (data.messages?.length ?? 0),
+        'progress=' + (data.progress ?? 'n/a'),
+        'syncType=' + data.syncType,
+        'isLatest=' + data.isLatest,
+      )
+    })
+    sock.ev.on('messaging-history.status', (status) => {
+      console.log('[baileys] messaging-history.status', status)
+    })
+    sock.ev.on('chats.upsert', (chats) => {
+      console.log('[baileys] chats.upsert count=' + chats.length)
+    })
 
     sock.ev.on('connection.update', async (update) => {
       const { connection, lastDisconnect, qr } = update
