@@ -5,19 +5,11 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
-    inputs:
-      tag:
-        description: 'Version tag to release (e.g. v0.2.0)'
-        required: false
-        default: ''
 
 permissions:
   contents: write
 
 jobs:
-  # ─────────────────────────────────────────────────────────────────────────────
-  # Linux — AppImage (x64)
-  # ─────────────────────────────────────────────────────────────────────────────
   build-linux:
     name: Linux AppImage
     runs-on: ubuntu-22.04
@@ -41,8 +33,6 @@ jobs:
             python3
 
       - name: Install npm dependencies
-        # Skips electron-rebuild in postinstall during CI; we do it manually
-        # after node_modules are populated so the right Electron headers are used.
         env:
           npm_config_ignore_scripts: 'true'
         run: npm ci
@@ -53,7 +43,6 @@ jobs:
       - name: Build (TypeScript + Vite + electron-builder)
         run: npx tsc && npx vite build && npx electron-builder --linux AppImage --x64
         env:
-          # Prevents electron-builder from re-running rebuild (we already did it).
           ELECTRON_BUILDER_NO_REBUILD: 'true'
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -64,20 +53,6 @@ jobs:
           path: release/**/*.AppImage
           if-no-files-found: error
 
-      - name: Publish to GitHub Release
-        uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/tags/')
-        with:
-          files: release/**/*.AppImage
-          draft: false
-          prerelease: false
-          generate_release_notes: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  # ─────────────────────────────────────────────────────────────────────────────
-  # Windows — NSIS installer (x64)
-  # ─────────────────────────────────────────────────────────────────────────────
   build-windows:
     name: Windows NSIS installer
     runs-on: windows-latest
@@ -113,11 +88,31 @@ jobs:
           path: release/**/*.exe
           if-no-files-found: error
 
-      - name: Publish to GitHub Release
-        uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/tags/')
+  release:
+    name: Publish GitHub Release
+    needs: [build-linux, build-windows]
+    runs-on: ubuntu-22.04
+    if: startsWith(github.ref, 'refs/tags/')
+
+    steps:
+      - name: Download Linux artifact
+        uses: actions/download-artifact@v4
         with:
-          files: release/**/*.exe
+          name: linux-appimage
+          path: dist/linux
+
+      - name: Download Windows artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-installer
+          path: dist/windows
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/linux/**
+            dist/windows/**
           draft: false
           prerelease: false
           generate_release_notes: true

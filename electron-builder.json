@@ -18,7 +18,7 @@
     "artifactName": "${productName}-${version}-linux-${arch}.${ext}",
     "desktop": {
       "Name": "WhatsZapp",
-      "Comment": "Fast, clean WhatsApp desktop client for Linux and Windows",
+      "Comment": "AI-native WhatsApp desktop for Linux and Windows",
       "Categories": "Network;InstantMessaging;"
     }
   },
