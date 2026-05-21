@@ -16,7 +16,6 @@ import {
 import type { WAMessage } from '@whiskeysockets/baileys'
 
 const MESSAGE_PAGE_SIZE = 50
-const HISTORY_MESSAGES_PER_CHAT = 50
 
 interface ChatRow {
   jid: string
@@ -50,6 +49,34 @@ function getContactNameMap(): Map<string, string> {
     if (label) map.set(row.jid, label)
   }
   return map
+}
+
+function rememberMessageSenderName(msg: WAMessage, chatJid: string): void {
+  if (msg.key.fromMe) return
+  const pushName = msg.pushName?.trim()
+  if (!pushName) return
+
+  const senderJid = resolveSenderId(msg, '')
+  const now = Date.now()
+  getDb()
+    .prepare(
+      `INSERT INTO contacts (jid, name, push_name, updated_at)
+       VALUES (?, NULL, ?, ?)
+       ON CONFLICT(jid) DO UPDATE SET
+         push_name = COALESCE(contacts.push_name, excluded.push_name),
+         updated_at = excluded.updated_at`,
+    )
+    .run(senderJid, pushName, now)
+
+  if (!chatJidIsGroup(chatJid)) {
+    getDb()
+      .prepare(
+        `UPDATE chats
+         SET title = ?, updated_at = ?
+         WHERE jid = ? AND (title = ? OR title = ? OR title GLOB '[0-9]*')`,
+      )
+      .run(pushName, now, chatJid, chatJid, formatPhoneFromJid(chatJid))
+  }
 }
 
 export function upsertContact(contact: Contact): void {
@@ -102,6 +129,34 @@ function resolveChatTitle(chat: Chat, contactNames: Map<string, string>): string
   return contactNames.get(jid) ?? formatPhoneFromJid(jid)
 }
 
+export function upsertGroupInfo(group: {
+  id: string
+  subject?: string | null
+  participants?: unknown[] | null
+}): void {
+  if (!isRenderableChatJid(group.id) || !chatJidIsGroup(group.id)) return
+
+  const title = group.subject?.trim() || 'Group'
+  const participantCount = group.participants?.length ?? null
+  const now = Date.now()
+
+  getDb()
+    .prepare(
+      `INSERT INTO chats (jid, title, is_group, unread_count, participant_count, updated_at)
+       VALUES (?, ?, 1, 0, ?, ?)
+       ON CONFLICT(jid) DO UPDATE SET
+         title = CASE
+           WHEN excluded.title != 'Group' THEN excluded.title
+           WHEN chats.title IS NULL OR chats.title = '' THEN excluded.title
+           ELSE chats.title
+         END,
+         is_group = 1,
+         participant_count = COALESCE(excluded.participant_count, chats.participant_count),
+         updated_at = excluded.updated_at`,
+    )
+    .run(group.id, title, participantCount, now)
+}
+
 export function upsertChatFromBaileys(chat: Chat): void {
   const jid = chat.id
   if (!isRenderableChatJid(jid)) return
@@ -145,7 +200,7 @@ export function upsertChatsFromBaileys(chats: Chat[]): void {
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(jid) DO UPDATE SET
        title = CASE
-         WHEN chats.title = 'Group' OR chats.title = excluded.jid THEN excluded.title
+         WHEN chats.title = 'Group' OR chats.title = excluded.jid OR chats.title GLOB '[0-9]*' THEN excluded.title
          ELSE chats.title
        END,
        is_group = excluded.is_group,
@@ -213,11 +268,7 @@ export function upsertMessageFromBaileys(msg: WAMessage, meId: string): MessageR
   if (!isRenderableChatJid(chatJid)) return null
 
   const text = getMessageText(msg)
-  if (!text && !msg.key.fromMe) {
-    // Skip empty protocol messages
-    const hasContent = Boolean(msg.message)
-    if (!hasContent) return null
-  }
+  if (!text) return null
 
   const contactNames = getContactNameMap()
   const id = messageIdFromKey(msg)
@@ -233,6 +284,7 @@ export function upsertMessageFromBaileys(msg: WAMessage, meId: string): MessageR
 
   // Chat row must exist before message insert (messages.chat_jid → chats.jid FK)
   ensureChatRow(chatJid, contactNames, preview, timestamp)
+  rememberMessageSenderName(msg, chatJid)
 
   getDb()
     .prepare(
@@ -257,86 +309,126 @@ export function upsertMessageFromBaileys(msg: WAMessage, meId: string): MessageR
   })
 }
 
-export function upsertMessagesFromBaileys(messages: WAMessage[], meId: string): number {
+/**
+ * Bulk import of WhatsApp history messages.
+ *
+ * Optimised for the initial sync:
+ *  - one prepared INSERT OR IGNORE per row (history messages are immutable)
+ *  - all chat row creations, message inserts, push-name upserts and
+ *    last-message updates happen inside a single transaction
+ *  - no per-row SELECTs, no FK fan-out
+ */
+export function bulkUpsertHistoryMessages(
+  messages: WAMessage[],
+  meId: string,
+): number {
   if (messages.length === 0) return 0
 
+  const db = getDb()
   const contactNames = getContactNameMap()
   const now = Date.now()
-  const jidsNeeded = new Set<string>()
-  const rows: {
+
+  interface PendingRow {
     id: string
     chatJid: string
     senderId: string
     senderName: string
-    text: string | null
+    text: string
     timestamp: number
     status: string | null
     isFromMe: number
-  }[] = []
-  const chatLast = new Map<string, { preview: string; timestamp: number }>()
+  }
+
+  const rows: PendingRow[] = []
+  const chatJids = new Set<string>()
+  const chatLast = new Map<
+    string,
+    { preview: string; timestamp: number }
+  >()
+  const pushNames = new Map<string, string>()
 
   for (const msg of messages) {
     const chatJid = resolveChatJid(msg)
     if (!isRenderableChatJid(chatJid)) continue
 
     const text = getMessageText(msg)
-    if (!text && !msg.key.fromMe && !msg.message) continue
+    if (!text) continue
 
+    const senderId = resolveSenderId(msg, meId)
     const senderName = resolveSenderName(msg, meId, contactNames)
     const timestamp = getMessageTimestamp(msg)
     const isFromMe = msg.key.fromMe ? 1 : 0
-    const rawStatus = typeof msg.status === 'number' ? msg.status : undefined
-    const status = msg.key.fromMe ? mapReceiptStatus(rawStatus) : undefined
+    const rawStatus =
+      typeof msg.status === 'number' ? msg.status : undefined
+    const status = msg.key.fromMe ? mapReceiptStatus(rawStatus) ?? null : null
 
-    jidsNeeded.add(chatJid)
+    chatJids.add(chatJid)
     rows.push({
       id: messageIdFromKey(msg),
       chatJid,
-      senderId: resolveSenderId(msg, meId),
+      senderId,
       senderName,
-      text: text ?? null,
+      text,
       timestamp,
-      status: status ?? null,
+      status,
       isFromMe,
     })
 
-    const preview = formatLastMessagePreview(
-      text,
-      senderName,
-      chatJidIsGroup(chatJid),
-      Boolean(isFromMe),
-    )
-    const prev = chatLast.get(chatJid)
-    if (!prev || timestamp >= prev.timestamp) {
-      chatLast.set(chatJid, { preview, timestamp })
+    if (!msg.key.fromMe) {
+      const pushName = msg.pushName?.trim()
+      if (pushName) pushNames.set(senderId, pushName)
+    }
+
+    const previous = chatLast.get(chatJid)
+    if (!previous || timestamp >= previous.timestamp) {
+      chatLast.set(chatJid, {
+        preview: formatLastMessagePreview(
+          text,
+          senderName,
+          chatJidIsGroup(chatJid),
+          Boolean(isFromMe),
+        ),
+        timestamp,
+      })
     }
   }
 
   if (rows.length === 0) return 0
 
-  const insertChat = getDb().prepare(
+  const insertChat = db.prepare(
     `INSERT INTO chats (jid, title, is_group, last_message, last_message_time, unread_count, updated_at)
      VALUES (?, ?, ?, NULL, NULL, 0, ?)
      ON CONFLICT(jid) DO NOTHING`,
   )
-  const insertMsg = getDb().prepare(
-    `INSERT INTO messages (id, chat_jid, sender_id, sender_name, text, timestamp, status, is_from_me)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-     ON CONFLICT(id) DO UPDATE SET
-       text = COALESCE(excluded.text, messages.text),
-       status = COALESCE(excluded.status, messages.status),
-       sender_name = COALESCE(excluded.sender_name, messages.sender_name)`,
+  const insertMsg = db.prepare(
+    `INSERT OR IGNORE INTO messages
+       (id, chat_jid, sender_id, sender_name, text, timestamp, status, is_from_me)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
   )
-  const updateLast = getDb().prepare(
+  const updateLast = db.prepare(
     `UPDATE chats SET
        last_message = ?,
        last_message_time = ?,
        updated_at = ?
      WHERE jid = ? AND COALESCE(last_message_time, 0) <= ?`,
   )
+  const upsertPushName = db.prepare(
+    `INSERT INTO contacts (jid, name, push_name, updated_at)
+     VALUES (?, NULL, ?, ?)
+     ON CONFLICT(jid) DO UPDATE SET
+       push_name = COALESCE(contacts.push_name, excluded.push_name),
+       updated_at = excluded.updated_at`,
+  )
+  const fixDmTitle = db.prepare(
+    `UPDATE chats SET title = ?, updated_at = ?
+     WHERE jid = ? AND is_group = 0
+       AND (title = ? OR title = ? OR title GLOB '[0-9]*')`,
+  )
 
-  const tx = getDb().transaction(() => {
-    for (const jid of jidsNeeded) {
+  let inserted = 0
+
+  const tx = db.transaction(() => {
+    for (const jid of chatJids) {
       insertChat.run(
         jid,
         getFallbackChatTitle(jid, contactNames),
@@ -346,7 +438,7 @@ export function upsertMessagesFromBaileys(messages: WAMessage[], meId: string): 
     }
 
     for (const row of rows) {
-      insertMsg.run(
+      const result = insertMsg.run(
         row.id,
         row.chatJid,
         row.senderId,
@@ -356,167 +448,23 @@ export function upsertMessagesFromBaileys(messages: WAMessage[], meId: string): 
         row.status,
         row.isFromMe,
       )
+      if (result.changes > 0) inserted++
     }
 
     for (const [jid, last] of chatLast) {
       updateLast.run(last.preview, last.timestamp, now, jid, last.timestamp)
     }
-  })
 
-  tx()
-  return rows.length
-}
-
-export function upsertRecentMessagesFromHistory(
-  messages: WAMessage[],
-  meId: string,
-  perChatLimit = HISTORY_MESSAGES_PER_CHAT,
-): number {
-  if (messages.length === 0) return 0
-
-  const contactNames = getContactNameMap()
-  const now = Date.now()
-  const rowsByChat = new Map<
-    string,
-    {
-      id: string
-      chatJid: string
-      senderId: string
-      senderName: string
-      text: string | null
-      timestamp: number
-      status: string | null
-      isFromMe: number
-    }[]
-  >()
-
-  for (const msg of messages) {
-    const chatJid = resolveChatJid(msg)
-    if (!isRenderableChatJid(chatJid)) continue
-
-    const text = getMessageText(msg)
-    if (!text && !msg.key.fromMe && !msg.message) continue
-
-    const senderName = resolveSenderName(msg, meId, contactNames)
-    const rawStatus = typeof msg.status === 'number' ? msg.status : undefined
-    const row = {
-      id: messageIdFromKey(msg),
-      chatJid,
-      senderId: resolveSenderId(msg, meId),
-      senderName,
-      text: text ?? null,
-      timestamp: getMessageTimestamp(msg),
-      status: msg.key.fromMe ? (mapReceiptStatus(rawStatus) ?? null) : null,
-      isFromMe: msg.key.fromMe ? 1 : 0,
-    }
-
-    const rows = rowsByChat.get(chatJid) ?? []
-    rows.push(row)
-    rowsByChat.set(chatJid, rows)
-  }
-
-  const selectedRows: {
-    id: string
-    chatJid: string
-    senderId: string
-    senderName: string
-    text: string | null
-    timestamp: number
-    status: string | null
-    isFromMe: number
-  }[] = []
-
-  for (const [jid, rows] of rowsByChat) {
-    const stats = getDb()
-      .prepare(
-        `SELECT COUNT(*) as count, MIN(timestamp) as oldest
-         FROM messages
-         WHERE chat_jid = ?`,
-      )
-      .get(jid) as { count: number; oldest: number | null }
-    let storedCount = stats.count
-    const oldestStored = stats.oldest ?? 0
-
-    rows.sort((a, b) => b.timestamp - a.timestamp)
-
-    for (const row of rows) {
-      if (storedCount < perChatLimit || row.timestamp >= oldestStored) {
-        selectedRows.push(row)
-        storedCount += 1
+    for (const [jid, name] of pushNames) {
+      upsertPushName.run(jid, name, now)
+      if (!chatJidIsGroup(jid)) {
+        fixDmTitle.run(name, now, jid, jid, formatPhoneFromJid(jid))
       }
     }
-  }
-
-  if (selectedRows.length === 0) return 0
-
-  const insertChat = getDb().prepare(
-    `INSERT INTO chats (jid, title, is_group, last_message, last_message_time, unread_count, updated_at)
-     VALUES (?, ?, ?, NULL, NULL, 0, ?)
-     ON CONFLICT(jid) DO NOTHING`,
-  )
-  const insertMsg = getDb().prepare(
-    `INSERT INTO messages (id, chat_jid, sender_id, sender_name, text, timestamp, status, is_from_me)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-     ON CONFLICT(id) DO UPDATE SET
-       text = COALESCE(excluded.text, messages.text),
-       status = COALESCE(excluded.status, messages.status),
-       sender_name = COALESCE(excluded.sender_name, messages.sender_name)`,
-  )
-  const updateLast = getDb().prepare(
-    `UPDATE chats SET
-       last_message = ?,
-       last_message_time = ?,
-       updated_at = ?
-     WHERE jid = ? AND COALESCE(last_message_time, 0) <= ?`,
-  )
-
-  const jidsNeeded = new Set<string>()
-  const chatLast = new Map<string, { preview: string; timestamp: number }>()
-
-  for (const row of selectedRows) {
-    jidsNeeded.add(row.chatJid)
-    const preview = formatLastMessagePreview(
-      row.text ?? undefined,
-      row.senderName,
-      chatJidIsGroup(row.chatJid),
-      Boolean(row.isFromMe),
-    )
-    const previous = chatLast.get(row.chatJid)
-    if (!previous || row.timestamp >= previous.timestamp) {
-      chatLast.set(row.chatJid, { preview, timestamp: row.timestamp })
-    }
-  }
-
-  const tx = getDb().transaction(() => {
-    for (const jid of jidsNeeded) {
-      insertChat.run(
-        jid,
-        getFallbackChatTitle(jid, contactNames),
-        chatJidIsGroup(jid) ? 1 : 0,
-        now,
-      )
-    }
-
-    for (const row of selectedRows) {
-      insertMsg.run(
-        row.id,
-        row.chatJid,
-        row.senderId,
-        row.senderName,
-        row.text,
-        row.timestamp,
-        row.status,
-        row.isFromMe,
-      )
-    }
-
-    for (const [jid, last] of chatLast) {
-      updateLast.run(last.preview, last.timestamp, now, jid, last.timestamp)
-    }
   })
 
   tx()
-  return selectedRows.length
+  return inserted
 }
 
 function formatLastMessagePreview(
@@ -552,6 +500,19 @@ export function setGroupParticipantCount(jid: string, count: number): void {
       `UPDATE chats SET participant_count = ?, updated_at = ? WHERE jid = ?`,
     )
     .run(count, Date.now(), jid)
+}
+
+export function listPlaceholderGroupJids(limit = 50): string[] {
+  const rows = getDb()
+    .prepare(
+      `SELECT jid FROM chats
+       WHERE is_group = 1 AND (title = 'Group' OR title IS NULL OR title = '')
+       ORDER BY COALESCE(last_message_time, 0) DESC
+       LIMIT ?`,
+    )
+    .all(limit) as { jid: string }[]
+
+  return rows.map((row) => row.jid)
 }
 
 export function deleteChats(jids: string[]): void {

@@ -12,7 +12,7 @@ import { sendTextMessage } from './baileys/send'
 import {
   listChatsFromDb,
   listMessagesFromDb,
-  setGroupParticipantCount,
+  upsertGroupInfo,
 } from './db/repositories'
 import { chatJidIsGroup } from './baileys/message-utils'
 import { getSyncProgress } from './sync-progress'
@@ -66,7 +66,7 @@ export function registerIpcHandlers() {
     try {
       const meta = await sock.groupMetadata(jid)
       const count = meta.participants?.length ?? 0
-      setGroupParticipantCount(jid, count)
+      upsertGroupInfo(meta)
       return { participantCount: count }
     } catch {
       return null

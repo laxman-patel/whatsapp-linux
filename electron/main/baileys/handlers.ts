@@ -2,19 +2,18 @@ import type { BaileysEventMap, WASocket } from '@whiskeysockets/baileys'
 import { jidNormalizedUser, proto } from '@whiskeysockets/baileys'
 import {
   deleteChats,
-  setGroupParticipantCount,
   upsertChatFromBaileys,
   upsertChatsFromBaileys,
   upsertContacts,
+  upsertGroupInfo,
   upsertMessageFromBaileys,
-  upsertRecentMessagesFromHistory,
 } from '../db/repositories'
 import {
   onHistorySyncComplete,
-  recordHistoryChunk,
   scheduleChatsNotify,
   scheduleMessagesNotify,
 } from '../sync-progress'
+import { enqueueHistoryChunk, setSyncQueueMeId } from './sync-queue'
 
 let meId = ''
 
@@ -24,46 +23,18 @@ export function getMeId(): string {
 
 export function registerBaileysHandlers(sock: WASocket): void {
   meId = jidNormalizedUser(sock.user?.id ?? 'me@s.whatsapp.net')
+  setSyncQueueMeId(meId)
 
   sock.ev.on('messaging-history.set', (data) => {
-    try {
-      const msgCount = data.messages?.length ?? 0
-      const chatCount = data.chats?.length ?? 0
-      const contactCount = data.contacts?.length ?? 0
-
-      if (data.contacts?.length) upsertContacts(data.contacts)
-      if (data.chats?.length) upsertChatsFromBaileys(data.chats)
-
-      // Show latest chats immediately; message import runs next tick so the
-      // renderer can paint the sidebar before heavier SQLite work starts.
-      recordHistoryChunk({
-        chats: chatCount,
-        contacts: contactCount,
-        progress: data.progress ?? undefined,
-        isLatest: msgCount === 0 ? data.isLatest ?? undefined : undefined,
-      })
-      scheduleChatsNotify(true)
-
-      if (data.messages?.length) {
-        const messages = data.messages
-        setTimeout(() => {
-          try {
-            const inserted = upsertRecentMessagesFromHistory(messages, meId)
-            recordHistoryChunk({
-              messages: inserted,
-              deferredMessages: Math.max(0, messages.length - inserted),
-              progress: data.progress ?? undefined,
-              isLatest: data.isLatest ?? undefined,
-            })
-            scheduleChatsNotify()
-          } catch (err) {
-            console.error('[baileys] history message import failed:', err)
-          }
-        }, 0)
-      }
-    } catch (err) {
-      console.error('[baileys] messaging-history.set failed:', err)
-    }
+    // Hand off to the drain queue. It batches consecutive chunks into one
+    // SQLite transaction so initial sync overlaps with Baileys decoding.
+    enqueueHistoryChunk({
+      chats: data.chats ?? undefined,
+      contacts: data.contacts ?? undefined,
+      messages: data.messages ?? undefined,
+      progress: data.progress ?? undefined,
+      isLatest: data.isLatest ?? undefined,
+    })
   })
 
   sock.ev.on('messaging-history.status', ({ status, syncType }) => {
@@ -136,7 +107,19 @@ export function registerBaileysHandlers(sock: WASocket): void {
 
   sock.ev.on('groups.upsert', (groups) => {
     for (const g of groups) {
-      setGroupParticipantCount(g.id, g.participants?.length ?? 0)
+      upsertGroupInfo(g)
+    }
+    scheduleChatsNotify()
+  })
+
+  sock.ev.on('groups.update', (groups) => {
+    for (const g of groups) {
+      if (!g.id) continue
+      upsertGroupInfo({
+        id: g.id,
+        subject: g.subject,
+        participants: 'participants' in g ? g.participants : null,
+      })
     }
     scheduleChatsNotify()
   })

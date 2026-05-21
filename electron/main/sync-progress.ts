@@ -55,7 +55,6 @@ export function recordHistoryChunk(stats: {
   chats?: number
   messages?: number
   contacts?: number
-  deferredMessages?: number
   progress?: number | null
   isLatest?: boolean
 }) {
@@ -71,11 +70,21 @@ export function recordHistoryChunk(stats: {
   if (typeof stats.progress === 'number' && !Number.isNaN(stats.progress)) {
     progress = Math.min(100, Math.max(0, Math.round(stats.progress)))
   } else if (messagesSynced > 0) {
-    // Indeterminate-ish advance when server omits progress
     progress = Math.min(95, progress + 2)
   }
 
-  const phase =
+  // Best-effort total estimate from imported / progress. Baileys's `progress`
+  // is server-reported and may be approximate; we cap at messagesSynced so the
+  // counter never goes backwards.
+  let estimatedTotalMessages = state.estimatedTotalMessages
+  if (progress > 0 && messagesSynced > 0) {
+    const estimate = Math.round((messagesSynced * 100) / progress)
+    estimatedTotalMessages = Math.max(estimate, messagesSynced)
+  } else if (messagesSynced > (estimatedTotalMessages ?? 0)) {
+    estimatedTotalMessages = messagesSynced
+  }
+
+  const phase: SyncProgressPayload['phase'] =
     messagesSynced > 0 ? 'messages' : chatsSynced > 0 ? 'history' : 'history'
 
   updateSyncProgress({
@@ -86,16 +95,10 @@ export function recordHistoryChunk(stats: {
     messagesSynced,
     contactsSynced,
     currentChunkMessages: stats.messages ?? 0,
-    deferredMessages: (state.deferredMessages ?? 0) + (stats.deferredMessages ?? 0),
+    estimatedTotalMessages,
     importRatePerSecond,
     elapsedMs,
-    message: buildMessage(
-      messagesSynced,
-      chatsSynced,
-      progress,
-      importRatePerSecond,
-      (state.deferredMessages ?? 0) + (stats.deferredMessages ?? 0),
-    ),
+    message: buildMessage(messagesSynced, chatsSynced, progress),
   })
 
   if (stats.isLatest && progress >= 100) {
@@ -111,19 +114,10 @@ function buildMessage(
   messages: number,
   chats: number,
   progress: number,
-  rate: number,
-  deferred: number,
 ): string {
-  if (messages > 0) {
-    const rateText = rate > 0 ? ` · ${rate.toLocaleString()}/sec` : ''
-    const deferredText =
-      deferred > 0 ? ` · ${deferred.toLocaleString()} older deferred` : ''
-    return `Fast-syncing recent messages… ${messages.toLocaleString()} imported (${progress}%)${rateText}${deferredText}`
-  }
-  if (chats > 0) {
-    return `Loading latest chats… ${chats.toLocaleString()} chats (${progress}%)`
-  }
-  return `Loading latest WhatsApp data… ${progress}%`
+  if (messages > 0) return `Syncing messages · ${progress}%`
+  if (chats > 0) return `Syncing conversations · ${progress}%`
+  return `Connecting to WhatsApp · ${progress}%`
 }
 
 function finishSync() {
@@ -132,11 +126,11 @@ function finishSync() {
     active: true,
     progress: 100,
     phase: 'finalizing',
-    message: 'Recent chats ready. Older history will load on demand later.',
+    message: 'Sync complete',
     chatsSynced: state.chatsSynced,
     messagesSynced: state.messagesSynced,
     contactsSynced: state.contactsSynced,
-    deferredMessages: state.deferredMessages,
+    estimatedTotalMessages: state.messagesSynced,
     importRatePerSecond: state.importRatePerSecond,
     elapsedMs: state.elapsedMs,
   }
@@ -147,7 +141,7 @@ function finishSync() {
     emit()
     flushPendingNotifications()
     idleTimer = null
-  }, 5000)
+  }, 2500)
 }
 
 /** If no history events arrive, stop showing sync UI after connect */

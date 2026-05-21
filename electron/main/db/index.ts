@@ -13,7 +13,14 @@ export function initDatabase(): Database.Database {
   if (db) return db
 
   db = new Database(getDbPath())
+  // Performance pragmas for bulk WhatsApp history imports.
+  // WAL keeps reads (sidebar) responsive while the writer is flushing.
+  // synchronous=NORMAL is safe with WAL and ~10x faster than FULL.
   db.pragma('journal_mode = WAL')
+  db.pragma('synchronous = NORMAL')
+  db.pragma('temp_store = MEMORY')
+  db.pragma('cache_size = -65536') // 64 MiB page cache
+  db.pragma('mmap_size = 268435456') // 256 MiB memory map
   db.pragma('foreign_keys = ON')
 
   for (const sql of MIGRATIONS) {

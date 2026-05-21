@@ -51,7 +51,7 @@ export interface SyncProgressPayload {
   messagesSynced?: number
   contactsSynced?: number
   currentChunkMessages?: number
-  deferredMessages?: number
+  estimatedTotalMessages?: number
   importRatePerSecond?: number
   elapsedMs?: number
 }

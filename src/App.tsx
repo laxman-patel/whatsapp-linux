@@ -16,18 +16,31 @@ import {
 import { SyncProgressBanner } from '@/components/SyncProgressBanner'
 import { ThemeToggle } from '@/components/ThemeToggle'
 import type { ChatFilter, ColorScheme } from '@/shared/ipc'
+import { LogOut } from 'lucide-react'
 
 function TitleBar({
   colorScheme,
   onColorSchemeChange,
+  onRelink,
 }: {
   colorScheme: ColorScheme
   onColorSchemeChange: (scheme: ColorScheme) => void
+  onRelink: () => void
 }) {
   return (
     <div className="titlebar relative flex h-8 shrink-0 items-center justify-center border-b border-[var(--titlebar-border)] bg-[var(--titlebar-bg)] px-3 text-[12px] font-medium text-[var(--titlebar-text)]">
       <span>WhatsApp Desktop</span>
-      <div className="absolute right-2">
+      <div className="absolute right-2 flex items-center gap-1">
+        <button
+          type="button"
+          onClick={onRelink}
+          className="titlebar-btn flex h-6 items-center gap-1 rounded-md px-2 text-[var(--titlebar-text)] transition-colors hover:bg-black/5 dark:hover:bg-white/10"
+          title="Clear session and show QR"
+          aria-label="Clear session and show QR"
+        >
+          <LogOut className="size-3.5" />
+          <span className="text-[11px]">Relink</span>
+        </button>
         <ThemeToggle value={colorScheme} onChange={onColorSchemeChange} />
       </div>
     </div>
@@ -97,6 +110,13 @@ function App() {
     [setChatFilter],
   )
 
+  const handleRelink = useCallback(() => {
+    const confirmed = window.confirm(
+      'Clear this linked WhatsApp session and show a fresh QR code?',
+    )
+    if (confirmed) void logout()
+  }, [logout])
+
   if (!loaded) {
     return (
       <div className="flex h-screen items-center justify-center bg-[var(--chat-bg-app)] text-sm text-[var(--chat-text-secondary)]">
@@ -107,7 +127,11 @@ function App() {
 
   return (
     <div className="flex h-screen flex-col overflow-hidden">
-      <TitleBar colorScheme={colorScheme} onColorSchemeChange={setColorScheme} />
+      <TitleBar
+        colorScheme={colorScheme}
+        onColorSchemeChange={setColorScheme}
+        onRelink={handleRelink}
+      />
 
       <div className="min-h-0 flex-1">
         {isConnected ? (

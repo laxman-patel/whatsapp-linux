@@ -33,7 +33,7 @@ export function messageToChatcn(
 ): ChatMessageData {
   return {
     id: msg.id,
-    senderId: msg.senderId,
+    senderId: msg.isFromMe ? CURRENT_USER.id : msg.senderId,
     senderName: msg.isFromMe ? 'You' : msg.senderName,
     text: msg.text,
     timestamp: msg.timestamp,

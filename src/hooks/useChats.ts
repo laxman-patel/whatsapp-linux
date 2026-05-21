@@ -67,8 +67,13 @@ export function useChats(filter: ChatFilter, search: string) {
   }, [refresh])
 
   useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null
     return window.api.onChatsUpdated(() => {
-      void refresh()
+      if (timer) return
+      timer = setTimeout(() => {
+        timer = null
+        void refresh()
+      }, 200)
     })
   }, [refresh])
 

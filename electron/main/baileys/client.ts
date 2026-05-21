@@ -17,6 +17,7 @@ import { broadcast } from '../broadcast'
 import { clearDatabase } from '../db'
 import { registerBaileysHandlers } from './handlers'
 import { beginSync, resetSyncProgress, scheduleSyncIdleFallback } from '../sync-progress'
+import { listPlaceholderGroupJids, upsertGroupInfo } from '../db/repositories'
 
 export interface ConnectionPayload {
   status: ConnectionStatus
@@ -121,6 +122,7 @@ export async function startWhatsApp(): Promise<void> {
         beginSync()
         scheduleSyncIdleFallback(30000)
         broadcast(IPC_CHANNELS.chatsUpdated)
+        void hydrateMissingGroupNames(sock)
       }
 
       if (connection === 'close') {
@@ -161,6 +163,21 @@ export async function startWhatsApp(): Promise<void> {
     setState({ status: 'error', message: msg })
   } finally {
     starting = false
+  }
+}
+
+async function hydrateMissingGroupNames(sock: WASocket): Promise<void> {
+  const jids = listPlaceholderGroupJids()
+  if (jids.length === 0) return
+
+  for (const jid of jids) {
+    try {
+      const meta = await sock.groupMetadata(jid)
+      upsertGroupInfo(meta)
+      broadcast(IPC_CHANNELS.chatsUpdated)
+    } catch {
+      // Group metadata can fail for stale/left groups; keep the placeholder.
+    }
   }
 }
 

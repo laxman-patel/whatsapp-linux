@@ -41,9 +41,8 @@ export function getMessageText(msg: WAMessage): string | undefined {
   if (content.contactMessage) return 'Contact'
   if (content.locationMessage) return 'Location'
   if (content.pollCreationMessage) return 'Poll'
-  if (content.reactionMessage) return 'Reaction'
 
-  return 'Message'
+  return undefined
 }
 
 export function getMessageTimestamp(msg: WAMessage): number {
