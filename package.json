@@ -16,7 +16,7 @@
     "postinstall": "electron-rebuild -f -w better-sqlite3"
   },
   "dependencies": {
-    "@whiskeysockets/baileys": "^7.0.0-rc12",
+    "@whiskeysockets/baileys": "^6.7.22",
     "better-sqlite3": "^12.10.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

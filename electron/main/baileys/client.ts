@@ -40,9 +40,35 @@ function shouldSyncFastHistory(
 ): boolean {
   const type = msg.syncType
 
-  // Match Baileys/WhatsApp Web's default: accept all processable history except
-  // FULL. We keep the UI fast by importing only a recent per-chat window.
-  return type !== proto.HistorySync.HistorySyncType.FULL
+  // Match Baileys' default: accept everything except FULL. We're on 6.x now,
+  // where the enum lives under proto.Message.HistorySyncNotification.
+  return type !== proto.Message.HistorySyncNotification.HistorySyncType.FULL
+}
+
+// Bump this whenever switching Baileys major versions so we don't carry an
+// incompatible auth state across the change.
+const AUTH_FORMAT_VERSION = 'baileys-6'
+
+async function ensureCompatibleAuthState(): Promise<void> {
+  const dir = getAuthDir()
+  const stampFile = path.join(dir, '.app-auth-version')
+  await fs.mkdir(dir, { recursive: true })
+  let stamp = ''
+  try {
+    stamp = (await fs.readFile(stampFile, 'utf8')).trim()
+  } catch {
+    // first launch on this version: stamp + reset auth if anything exists.
+  }
+  if (stamp !== AUTH_FORMAT_VERSION) {
+    await fs.rm(dir, { recursive: true, force: true })
+    await fs.mkdir(dir, { recursive: true })
+    await fs.writeFile(stampFile, AUTH_FORMAT_VERSION, 'utf8')
+    try {
+      clearDatabase()
+    } catch (err) {
+      console.warn('[baileys] clearDatabase during downgrade failed:', err)
+    }
+  }
 }
 
 export function getAuthDir(): string {
@@ -83,8 +109,8 @@ export async function startWhatsApp(): Promise<void> {
   setState({ status: 'connecting', message: 'Connecting to WhatsApp…' })
 
   try {
+    await ensureCompatibleAuthState()
     const authDir = getAuthDir()
-    await fs.mkdir(authDir, { recursive: true })
 
     const { state, saveCreds } = await useMultiFileAuthState(authDir)
     const { version } = await fetchLatestBaileysVersion()
@@ -125,9 +151,6 @@ export async function startWhatsApp(): Promise<void> {
         'syncType=' + data.syncType,
         'isLatest=' + data.isLatest,
       )
-    })
-    sock.ev.on('messaging-history.status', (status) => {
-      console.log('[baileys] messaging-history.status', status)
     })
     sock.ev.on('chats.upsert', (chats) => {
       console.log('[baileys] chats.upsert count=' + chats.length)
