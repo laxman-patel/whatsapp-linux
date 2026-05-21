@@ -14,6 +14,8 @@ function subscribe<T extends unknown[]>(
 const api: IpcApi = {
   getSettings: () => ipcRenderer.invoke(IPC_CHANNELS.settingsGet),
   setChatFilter: (filter) => ipcRenderer.invoke(IPC_CHANNELS.settingsSetFilter, filter),
+  setColorScheme: (scheme) =>
+    ipcRenderer.invoke(IPC_CHANNELS.settingsSetColorScheme, scheme),
   getAuthStatus: () => ipcRenderer.invoke(IPC_CHANNELS.authStatus),
   listChats: (filter, search) => ipcRenderer.invoke(IPC_CHANNELS.chatsList, filter, search),
   openChat: (jid) => ipcRenderer.invoke(IPC_CHANNELS.chatOpen, jid),

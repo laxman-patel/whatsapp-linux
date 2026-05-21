@@ -1,4 +1,5 @@
 export type ChatFilter = 'all' | 'dm' | 'group'
+export type ColorScheme = 'light' | 'dark' | 'system'
 
 export type ConnectionStatus =
   | 'disconnected'
@@ -29,9 +30,15 @@ export interface MessageRecord {
   isFromMe: boolean
 }
 
+export interface AppSettings {
+  chatFilter: ChatFilter
+  colorScheme: ColorScheme
+}
+
 export interface IpcApi {
-  getSettings: () => Promise<{ chatFilter: ChatFilter }>
+  getSettings: () => Promise<AppSettings>
   setChatFilter: (filter: ChatFilter) => Promise<void>
+  setColorScheme: (scheme: ColorScheme) => Promise<void>
   getAuthStatus: () => Promise<{ status: ConnectionStatus; message?: string }>
   listChats: (filter: ChatFilter, search?: string) => Promise<ChatSummary[]>
   openChat: (jid: string) => Promise<{ participantCount?: number } | null>
@@ -48,6 +55,7 @@ export interface IpcApi {
 export const IPC_CHANNELS = {
   settingsGet: 'settings:get',
   settingsSetFilter: 'settings:set-filter',
+  settingsSetColorScheme: 'settings:set-color-scheme',
   authStatus: 'auth:status',
   chatsList: 'chats:list',
   chatOpen: 'chat:open',

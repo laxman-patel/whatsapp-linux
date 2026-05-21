@@ -69,6 +69,50 @@
   --chat-duration-normal: 250ms;
 }
 
+/* macOS Messages-style dark mode */
+.dark [data-chat-theme='lunar'],
+html.dark [data-chat-theme='lunar'] {
+  --chat-bg-app: #1c1c1e;
+  --chat-bg-sidebar: #2c2c2e;
+  --chat-bg-main: #1c1c1e;
+  --chat-bg-header: rgba(28, 28, 30, 0.85);
+  --chat-bg-composer: rgba(28, 28, 30, 0.92);
+
+  --chat-bubble-outgoing: #34c759;
+  --chat-bubble-outgoing-text: #ffffff;
+  --chat-bubble-incoming: #3a3a3c;
+  --chat-bubble-incoming-text: #ffffff;
+
+  --chat-accent: #0a84ff;
+  --chat-accent-soft: rgba(10, 132, 255, 0.15);
+  --chat-green: #34c759;
+  --chat-orange: #ff9f0a;
+  --chat-red: #ff453a;
+
+  --chat-text-primary: #ffffff;
+  --chat-text-secondary: #98989d;
+  --chat-text-tertiary: #636366;
+  --chat-border: rgba(255, 255, 255, 0.08);
+  --chat-border-strong: rgba(255, 255, 255, 0.12);
+
+  --chat-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
+  --chat-shadow-md: 0 4px 16px rgba(0, 0, 0, 0.35);
+  --chat-shadow-lg: 0 8px 40px rgba(0, 0, 0, 0.45);
+  --chat-shadow-toolbar: 0 2px 20px rgba(0, 0, 0, 0.45);
+}
+
+:root {
+  --titlebar-bg: #f4f4f5;
+  --titlebar-text: #71717a;
+  --titlebar-border: rgba(0, 0, 0, 0.05);
+}
+
+html.dark {
+  --titlebar-bg: #2c2c2e;
+  --titlebar-text: #98989d;
+  --titlebar-border: rgba(255, 255, 255, 0.08);
+}
+
 *,
 *::before,
 *::after {

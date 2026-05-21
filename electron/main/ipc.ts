@@ -1,6 +1,6 @@
 import { ipcMain, BrowserWindow } from 'electron'
 import Store from 'electron-store'
-import type { ChatFilter, ConnectionStatus } from '../../src/shared/ipc'
+import type { ChatFilter, ColorScheme, ConnectionStatus } from '../../src/shared/ipc'
 import { IPC_CHANNELS } from '../../src/shared/ipc'
 import {
   getMockGroupMeta,
@@ -9,12 +9,13 @@ import {
   sendMockText,
 } from './mock-data'
 
-interface AppSettings extends Record<string, ChatFilter> {
+interface StoredSettings extends Record<string, ChatFilter | ColorScheme> {
   chatFilter: ChatFilter
+  colorScheme: ColorScheme
 }
 
-const store = new Store<AppSettings>({
-  defaults: { chatFilter: 'all' },
+const store = new Store<StoredSettings>({
+  defaults: { chatFilter: 'all', colorScheme: 'system' },
 })
 
 function broadcast(channel: string, ...args: unknown[]) {
@@ -26,10 +27,15 @@ function broadcast(channel: string, ...args: unknown[]) {
 export function registerIpcHandlers() {
   ipcMain.handle(IPC_CHANNELS.settingsGet, () => ({
     chatFilter: store.get('chatFilter'),
+    colorScheme: store.get('colorScheme'),
   }))
 
   ipcMain.handle(IPC_CHANNELS.settingsSetFilter, (_, filter: ChatFilter) => {
     store.set('chatFilter', filter)
+  })
+
+  ipcMain.handle(IPC_CHANNELS.settingsSetColorScheme, (_, scheme: ColorScheme) => {
+    store.set('colorScheme', scheme)
   })
 
   ipcMain.handle(IPC_CHANNELS.authStatus, () => ({

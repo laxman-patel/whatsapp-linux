@@ -73,8 +73,8 @@ function ConversationItem({
       className={cn(
         "mx-1 flex w-[calc(100%-8px)] items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors",
         isActive
-          ? "bg-[#007AFF]/15 ring-1 ring-[#007AFF]/30"
-          : "hover:bg-[var(--chat-accent-soft)]"
+          ? 'bg-[#007AFF]/15 ring-1 ring-[#007AFF]/30 dark:bg-[#0A84FF]/20 dark:ring-[#0A84FF]/40'
+          : 'hover:bg-[var(--chat-accent-soft)]'
       )}
     >
       <div className="relative shrink-0">

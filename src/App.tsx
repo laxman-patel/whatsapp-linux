@@ -6,18 +6,28 @@ import {
   messageToChatcn,
 } from '@/lib/adapters/baileys-to-chatcn'
 import { useAuthStatus, useChats, useMessages, useSettings } from '@/hooks/useChats'
-import type { ChatFilter } from '@/shared/ipc'
+import { ThemeToggle } from '@/components/ThemeToggle'
+import type { ChatFilter, ColorScheme } from '@/shared/ipc'
 
-function TitleBar() {
+function TitleBar({
+  colorScheme,
+  onColorSchemeChange,
+}: {
+  colorScheme: ColorScheme
+  onColorSchemeChange: (scheme: ColorScheme) => void
+}) {
   return (
-    <div className="titlebar flex h-8 shrink-0 items-center justify-center border-b border-black/5 bg-[#F4F4F5] text-[12px] font-medium text-[#71717A]">
-      WhatsApp Desktop
+    <div className="titlebar relative flex h-8 shrink-0 items-center justify-center border-b border-[var(--titlebar-border)] bg-[var(--titlebar-bg)] px-3 text-[12px] font-medium text-[var(--titlebar-text)]">
+      <span>WhatsApp Desktop</span>
+      <div className="absolute right-2">
+        <ThemeToggle value={colorScheme} onChange={onColorSchemeChange} />
+      </div>
     </div>
   )
 }
 
 function App() {
-  const { chatFilter, setChatFilter, loaded } = useSettings()
+  const { chatFilter, setChatFilter, colorScheme, setColorScheme, loaded } = useSettings()
   const [search, setSearch] = useState('')
   const [activeJid, setActiveJid] = useState<string | undefined>()
   const [headerSubtitle, setHeaderSubtitle] = useState<string | undefined>()
@@ -77,7 +87,7 @@ function App() {
 
   if (!loaded) {
     return (
-      <div className="flex h-screen items-center justify-center bg-[#FAFAFA] text-sm text-[#71717A]">
+      <div className="flex h-screen items-center justify-center bg-[var(--chat-bg-app)] text-sm text-[var(--chat-text-secondary)]">
         Loading…
       </div>
     )
@@ -85,9 +95,9 @@ function App() {
 
   return (
     <div className="flex h-screen flex-col overflow-hidden">
-      <TitleBar />
+      <TitleBar colorScheme={colorScheme} onColorSchemeChange={setColorScheme} />
       {status !== 'connected' && (
-        <div className="shrink-0 bg-amber-50 px-4 py-2 text-center text-[13px] text-amber-800">
+        <div className="shrink-0 bg-amber-50 px-4 py-2 text-center text-[13px] text-amber-800 dark:bg-amber-950/50 dark:text-amber-200">
           {message ?? `Connection: ${status}`}
         </div>
       )}

@@ -1,23 +1,50 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { ChatFilter, ChatSummary, MessageRecord } from '@/shared/ipc'
+import type { ChatFilter, ChatSummary, ColorScheme, MessageRecord } from '@/shared/ipc'
+
+function resolveDark(scheme: ColorScheme): boolean {
+  if (scheme === 'dark') return true
+  if (scheme === 'light') return false
+  return window.matchMedia('(prefers-color-scheme: dark)').matches
+}
+
+function applyColorScheme(scheme: ColorScheme) {
+  document.documentElement.classList.toggle('dark', resolveDark(scheme))
+}
 
 export function useSettings() {
   const [chatFilter, setChatFilterState] = useState<ChatFilter>('all')
+  const [colorScheme, setColorSchemeState] = useState<ColorScheme>('system')
   const [loaded, setLoaded] = useState(false)
 
   useEffect(() => {
     window.api.getSettings().then((s) => {
       setChatFilterState(s.chatFilter)
+      setColorSchemeState(s.colorScheme)
+      applyColorScheme(s.colorScheme)
       setLoaded(true)
     })
   }, [])
+
+  useEffect(() => {
+    if (!loaded || colorScheme !== 'system') return
+    const mq = window.matchMedia('(prefers-color-scheme: dark)')
+    const onChange = () => applyColorScheme('system')
+    mq.addEventListener('change', onChange)
+    return () => mq.removeEventListener('change', onChange)
+  }, [colorScheme, loaded])
 
   const setChatFilter = useCallback(async (filter: ChatFilter) => {
     setChatFilterState(filter)
     await window.api.setChatFilter(filter)
   }, [])
 
-  return { chatFilter, setChatFilter, loaded }
+  const setColorScheme = useCallback(async (scheme: ColorScheme) => {
+    setColorSchemeState(scheme)
+    applyColorScheme(scheme)
+    await window.api.setColorScheme(scheme)
+  }, [])
+
+  return { chatFilter, setChatFilter, colorScheme, setColorScheme, loaded }
 }
 
 export function useChats(filter: ChatFilter, search: string) {
