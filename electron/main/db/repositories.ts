@@ -16,6 +16,7 @@ import {
 import type { WAMessage } from '@whiskeysockets/baileys'
 
 const MESSAGE_PAGE_SIZE = 50
+const HISTORY_MESSAGES_PER_CHAT = 50
 
 interface ChatRow {
   jid: string
@@ -364,6 +365,158 @@ export function upsertMessagesFromBaileys(messages: WAMessage[], meId: string): 
 
   tx()
   return rows.length
+}
+
+export function upsertRecentMessagesFromHistory(
+  messages: WAMessage[],
+  meId: string,
+  perChatLimit = HISTORY_MESSAGES_PER_CHAT,
+): number {
+  if (messages.length === 0) return 0
+
+  const contactNames = getContactNameMap()
+  const now = Date.now()
+  const rowsByChat = new Map<
+    string,
+    {
+      id: string
+      chatJid: string
+      senderId: string
+      senderName: string
+      text: string | null
+      timestamp: number
+      status: string | null
+      isFromMe: number
+    }[]
+  >()
+
+  for (const msg of messages) {
+    const chatJid = resolveChatJid(msg)
+    if (!isRenderableChatJid(chatJid)) continue
+
+    const text = getMessageText(msg)
+    if (!text && !msg.key.fromMe && !msg.message) continue
+
+    const senderName = resolveSenderName(msg, meId, contactNames)
+    const rawStatus = typeof msg.status === 'number' ? msg.status : undefined
+    const row = {
+      id: messageIdFromKey(msg),
+      chatJid,
+      senderId: resolveSenderId(msg, meId),
+      senderName,
+      text: text ?? null,
+      timestamp: getMessageTimestamp(msg),
+      status: msg.key.fromMe ? (mapReceiptStatus(rawStatus) ?? null) : null,
+      isFromMe: msg.key.fromMe ? 1 : 0,
+    }
+
+    const rows = rowsByChat.get(chatJid) ?? []
+    rows.push(row)
+    rowsByChat.set(chatJid, rows)
+  }
+
+  const selectedRows: {
+    id: string
+    chatJid: string
+    senderId: string
+    senderName: string
+    text: string | null
+    timestamp: number
+    status: string | null
+    isFromMe: number
+  }[] = []
+
+  for (const [jid, rows] of rowsByChat) {
+    const stats = getDb()
+      .prepare(
+        `SELECT COUNT(*) as count, MIN(timestamp) as oldest
+         FROM messages
+         WHERE chat_jid = ?`,
+      )
+      .get(jid) as { count: number; oldest: number | null }
+    let storedCount = stats.count
+    const oldestStored = stats.oldest ?? 0
+
+    rows.sort((a, b) => b.timestamp - a.timestamp)
+
+    for (const row of rows) {
+      if (storedCount < perChatLimit || row.timestamp >= oldestStored) {
+        selectedRows.push(row)
+        storedCount += 1
+      }
+    }
+  }
+
+  if (selectedRows.length === 0) return 0
+
+  const insertChat = getDb().prepare(
+    `INSERT INTO chats (jid, title, is_group, last_message, last_message_time, unread_count, updated_at)
+     VALUES (?, ?, ?, NULL, NULL, 0, ?)
+     ON CONFLICT(jid) DO NOTHING`,
+  )
+  const insertMsg = getDb().prepare(
+    `INSERT INTO messages (id, chat_jid, sender_id, sender_name, text, timestamp, status, is_from_me)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET
+       text = COALESCE(excluded.text, messages.text),
+       status = COALESCE(excluded.status, messages.status),
+       sender_name = COALESCE(excluded.sender_name, messages.sender_name)`,
+  )
+  const updateLast = getDb().prepare(
+    `UPDATE chats SET
+       last_message = ?,
+       last_message_time = ?,
+       updated_at = ?
+     WHERE jid = ? AND COALESCE(last_message_time, 0) <= ?`,
+  )
+
+  const jidsNeeded = new Set<string>()
+  const chatLast = new Map<string, { preview: string; timestamp: number }>()
+
+  for (const row of selectedRows) {
+    jidsNeeded.add(row.chatJid)
+    const preview = formatLastMessagePreview(
+      row.text ?? undefined,
+      row.senderName,
+      chatJidIsGroup(row.chatJid),
+      Boolean(row.isFromMe),
+    )
+    const previous = chatLast.get(row.chatJid)
+    if (!previous || row.timestamp >= previous.timestamp) {
+      chatLast.set(row.chatJid, { preview, timestamp: row.timestamp })
+    }
+  }
+
+  const tx = getDb().transaction(() => {
+    for (const jid of jidsNeeded) {
+      insertChat.run(
+        jid,
+        getFallbackChatTitle(jid, contactNames),
+        chatJidIsGroup(jid) ? 1 : 0,
+        now,
+      )
+    }
+
+    for (const row of selectedRows) {
+      insertMsg.run(
+        row.id,
+        row.chatJid,
+        row.senderId,
+        row.senderName,
+        row.text,
+        row.timestamp,
+        row.status,
+        row.isFromMe,
+      )
+    }
+
+    for (const [jid, last] of chatLast) {
+      updateLast.run(last.preview, last.timestamp, now, jid, last.timestamp)
+    }
+  })
+
+  tx()
+  return selectedRows.length
 }
 
 function formatLastMessagePreview(

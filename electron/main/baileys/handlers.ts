@@ -7,10 +7,9 @@ import {
   upsertChatsFromBaileys,
   upsertContacts,
   upsertMessageFromBaileys,
-  upsertMessagesFromBaileys,
+  upsertRecentMessagesFromHistory,
 } from '../db/repositories'
 import {
-  beginSync,
   onHistorySyncComplete,
   recordHistoryChunk,
   scheduleChatsNotify,
@@ -34,19 +33,34 @@ export function registerBaileysHandlers(sock: WASocket): void {
 
       if (data.contacts?.length) upsertContacts(data.contacts)
       if (data.chats?.length) upsertChatsFromBaileys(data.chats)
-      const inserted = data.messages?.length
-        ? upsertMessagesFromBaileys(data.messages, meId)
-        : 0
 
+      // Show latest chats immediately; message import runs next tick so the
+      // renderer can paint the sidebar before heavier SQLite work starts.
       recordHistoryChunk({
         chats: chatCount,
-        messages: inserted || msgCount,
         contacts: contactCount,
         progress: data.progress ?? undefined,
-        isLatest: data.isLatest ?? undefined,
+        isLatest: msgCount === 0 ? data.isLatest ?? undefined : undefined,
       })
+      scheduleChatsNotify(true)
 
-      scheduleChatsNotify()
+      if (data.messages?.length) {
+        const messages = data.messages
+        setTimeout(() => {
+          try {
+            const inserted = upsertRecentMessagesFromHistory(messages, meId)
+            recordHistoryChunk({
+              messages: inserted,
+              deferredMessages: Math.max(0, messages.length - inserted),
+              progress: data.progress ?? undefined,
+              isLatest: data.isLatest ?? undefined,
+            })
+            scheduleChatsNotify()
+          } catch (err) {
+            console.error('[baileys] history message import failed:', err)
+          }
+        }, 0)
+      }
     } catch (err) {
       console.error('[baileys] messaging-history.set failed:', err)
     }

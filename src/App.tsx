@@ -109,9 +109,7 @@ function App() {
     <div className="flex h-screen flex-col overflow-hidden">
       <TitleBar colorScheme={colorScheme} onColorSchemeChange={setColorScheme} />
 
-      <div className="flex min-h-0 flex-1 flex-col">
-        {isConnected && <SyncProgressBanner sync={sync} />}
-        <div className="min-h-0 flex-1">
+      <div className="min-h-0 flex-1">
         {isConnected ? (
           <WhatsAppMessenger
             currentUser={CURRENT_USER}
@@ -136,8 +134,8 @@ function App() {
             onLogout={() => void logout()}
           />
         )}
-        </div>
       </div>
+      {isConnected && <SyncProgressBanner sync={sync} />}
     </div>
   )
 }

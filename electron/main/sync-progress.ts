@@ -55,6 +55,7 @@ export function recordHistoryChunk(stats: {
   chats?: number
   messages?: number
   contacts?: number
+  deferredMessages?: number
   progress?: number | null
   isLatest?: boolean
 }) {
@@ -85,9 +86,16 @@ export function recordHistoryChunk(stats: {
     messagesSynced,
     contactsSynced,
     currentChunkMessages: stats.messages ?? 0,
+    deferredMessages: (state.deferredMessages ?? 0) + (stats.deferredMessages ?? 0),
     importRatePerSecond,
     elapsedMs,
-    message: buildMessage(messagesSynced, chatsSynced, progress, importRatePerSecond),
+    message: buildMessage(
+      messagesSynced,
+      chatsSynced,
+      progress,
+      importRatePerSecond,
+      (state.deferredMessages ?? 0) + (stats.deferredMessages ?? 0),
+    ),
   })
 
   if (stats.isLatest && progress >= 100) {
@@ -104,15 +112,18 @@ function buildMessage(
   chats: number,
   progress: number,
   rate: number,
+  deferred: number,
 ): string {
   if (messages > 0) {
     const rateText = rate > 0 ? ` · ${rate.toLocaleString()}/sec` : ''
-    return `Syncing messages… ${messages.toLocaleString()} imported (${progress}%)${rateText}`
+    const deferredText =
+      deferred > 0 ? ` · ${deferred.toLocaleString()} older deferred` : ''
+    return `Fast-syncing recent messages… ${messages.toLocaleString()} imported (${progress}%)${rateText}${deferredText}`
   }
   if (chats > 0) {
-    return `Syncing conversations… ${chats.toLocaleString()} chats (${progress}%)`
+    return `Loading latest chats… ${chats.toLocaleString()} chats (${progress}%)`
   }
-  return `Syncing with WhatsApp… ${progress}%`
+  return `Loading latest WhatsApp data… ${progress}%`
 }
 
 function finishSync() {
@@ -121,10 +132,13 @@ function finishSync() {
     active: true,
     progress: 100,
     phase: 'finalizing',
-    message: 'Finishing sync…',
+    message: 'Recent chats ready. Older history will load on demand later.',
     chatsSynced: state.chatsSynced,
     messagesSynced: state.messagesSynced,
     contactsSynced: state.contactsSynced,
+    deferredMessages: state.deferredMessages,
+    importRatePerSecond: state.importRatePerSecond,
+    elapsedMs: state.elapsedMs,
   }
   emit()
 
