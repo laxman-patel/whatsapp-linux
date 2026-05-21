@@ -38,14 +38,9 @@ function shouldSyncFastHistory(
 ): boolean {
   const type = msg.syncType
 
-  // Keep first-login bootstrap, recent messages, and push names. Skip expensive
-  // full/on-demand/status history so the app becomes usable like WhatsApp Web.
-  return (
-    type === proto.Message.HistorySyncType.INITIAL_BOOTSTRAP ||
-    type === proto.Message.HistorySyncType.RECENT ||
-    type === proto.Message.HistorySyncType.PUSH_NAME ||
-    type === proto.Message.HistorySyncType.NON_BLOCKING_DATA
-  )
+  // Match Baileys/WhatsApp Web's default: accept all processable history except
+  // FULL. We keep the UI fast by importing only a recent per-chat window.
+  return type !== proto.HistorySync.HistorySyncType.FULL
 }
 
 export function getAuthDir(): string {
@@ -124,7 +119,7 @@ export async function startWhatsApp(): Promise<void> {
       if (connection === 'open') {
         setState({ status: 'connected' })
         beginSync()
-        scheduleSyncIdleFallback()
+        scheduleSyncIdleFallback(30000)
         broadcast(IPC_CHANNELS.chatsUpdated)
       }
 

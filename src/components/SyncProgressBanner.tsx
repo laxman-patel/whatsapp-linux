@@ -16,22 +16,31 @@ export function SyncProgressBanner({ sync }: SyncProgressBannerProps) {
 
   return (
     <div
-      className="fixed bottom-4 left-4 z-50 w-[360px] max-w-[calc(100vw-2rem)] rounded-2xl border border-[var(--chat-border-strong)] bg-[var(--chat-bg-sidebar)]/95 p-4 shadow-[var(--chat-shadow-lg)] backdrop-blur-xl"
+      className="fixed bottom-3 left-3 z-50 w-[320px] max-w-[calc(100vw-1.5rem)] rounded-xl border border-[var(--chat-border-strong)] bg-[var(--chat-bg-main)]/95 p-3 shadow-[var(--chat-shadow-md)] backdrop-blur-xl"
       role="status"
       aria-live="polite"
       aria-busy="true"
     >
-      <div className="flex items-start gap-3">
-        <Loader2 className="size-4 shrink-0 animate-spin text-[var(--chat-accent)]" />
+      <div className="flex items-start gap-2.5">
+        <div className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-[var(--chat-accent-soft)]">
+          <Loader2 className="size-3.5 animate-spin text-[var(--chat-accent)]" />
+        </div>
         <div className="min-w-0 flex-1">
-          <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--chat-accent)]">
-            Fast sync
-          </p>
-          <p className="truncate text-[13px] font-medium text-[var(--chat-text-primary)]">
+          <div className="mb-1 flex items-center justify-between gap-2">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--chat-accent)]">
+              Sync
+            </p>
+            {!indeterminate && (
+              <span className="text-[11px] tabular-nums text-[var(--chat-text-secondary)]">
+                {sync.progress}%
+              </span>
+            )}
+          </div>
+          <p className="truncate text-[12px] font-medium text-[var(--chat-text-primary)]">
             {sync.message || 'Syncing…'}
           </p>
           {(sync.chatsSynced ?? 0) > 0 || (sync.messagesSynced ?? 0) > 0 ? (
-            <p className="mt-0.5 text-[11px] text-[var(--chat-text-tertiary)]">
+            <p className="mt-0.5 truncate text-[11px] text-[var(--chat-text-tertiary)]">
               {(sync.chatsSynced ?? 0).toLocaleString()} chats
               {(sync.messagesSynced ?? 0) > 0 &&
                 ` · ${(sync.messagesSynced ?? 0).toLocaleString()} messages`}
@@ -52,11 +61,6 @@ export function SyncProgressBanner({ sync }: SyncProgressBannerProps) {
             />
           </div>
         </div>
-        {!indeterminate && (
-          <span className="shrink-0 text-[12px] tabular-nums text-[var(--chat-text-secondary)]">
-            {sync.progress}%
-          </span>
-        )}
       </div>
     </div>
   )

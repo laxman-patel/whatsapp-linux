@@ -147,7 +147,7 @@ function finishSync() {
     emit()
     flushPendingNotifications()
     idleTimer = null
-  }, 600)
+  }, 5000)
 }
 
 /** If no history events arrive, stop showing sync UI after connect */

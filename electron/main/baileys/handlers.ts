@@ -1,5 +1,5 @@
 import type { BaileysEventMap, WASocket } from '@whiskeysockets/baileys'
-import { jidNormalizedUser } from '@whiskeysockets/baileys'
+import { jidNormalizedUser, proto } from '@whiskeysockets/baileys'
 import {
   deleteChats,
   setGroupParticipantCount,
@@ -66,8 +66,12 @@ export function registerBaileysHandlers(sock: WASocket): void {
     }
   })
 
-  sock.ev.on('messaging-history.status', ({ status }) => {
-    if (status === 'complete') {
+  sock.ev.on('messaging-history.status', ({ status, syncType }) => {
+    const recentDone =
+      syncType === proto.HistorySync.HistorySyncType.RECENT &&
+      (status === 'complete' || status === 'paused')
+
+    if (recentDone) {
       onHistorySyncComplete()
       scheduleChatsNotify(true)
     }
