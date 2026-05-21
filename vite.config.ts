@@ -7,10 +7,13 @@ import pkg from './package.json'
 
 // https://vitejs.dev/config/
 export default defineConfig(({ command }) => {
-  rmSync('dist-electron', { recursive: true, force: true })
-
   const isServe = command === 'serve'
   const isBuild = command === 'build'
+
+  // Clean electron output only on cold start — wiping during HMR kills esbuild (EPIPE).
+  if (isBuild || process.env.VITE_ELECTRON_CLEAN === '1') {
+    rmSync('dist-electron', { recursive: true, force: true })
+  }
   const sourcemap = isServe || !!process.env.VSCODE_DEBUG
 
   return {
@@ -44,16 +47,19 @@ export default defineConfig(({ command }) => {
           },
         },
         preload: {
-          // Shortcut of `build.rollupOptions.input`.
-          // Preload scripts may contain Web assets, so use the `build.rollupOptions.input` instead `build.lib.entry`.
+          // Preload must be CJS — Electron loads it as a script, not an ES module.
           input: 'electron/preload/index.ts',
           vite: {
             build: {
-              sourcemap: sourcemap ? 'inline' : undefined, // #332
+              sourcemap: sourcemap ? 'inline' : undefined,
               minify: isBuild,
               outDir: 'dist-electron/preload',
               rollupOptions: {
-                external: Object.keys('dependencies' in pkg ? pkg.dependencies : {}),
+                external: ['electron'],
+                output: {
+                  format: 'cjs',
+                  entryFileNames: 'index.cjs',
+                },
               },
             },
           },
@@ -66,6 +72,7 @@ export default defineConfig(({ command }) => {
     ],
     server: {
       port: 5173,
+      strictPort: true,
     },
     clearScreen: false,
   }
