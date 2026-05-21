@@ -1,0 +1,121 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 240 10% 3.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 240 10% 3.9%;
+    --primary: 240 5.9% 10%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 240 4.8% 95.9%;
+    --secondary-foreground: 240 5.9% 10%;
+    --muted: 240 4.8% 95.9%;
+    --muted-foreground: 240 3.8% 46.1%;
+    --accent: 240 4.8% 95.9%;
+    --accent-foreground: 240 5.9% 10%;
+    --border: 240 5.9% 90%;
+    --input: 240 5.9% 90%;
+    --ring: 240 5.9% 10%;
+    --radius: 0.625rem;
+  }
+}
+
+/* chatcn theme variables (lunar) */
+:root {
+  --chat-font-sans: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+    'Helvetica Neue', sans-serif;
+}
+
+[data-chat-theme='lunar'] {
+  --chat-bg-app: #fafafa;
+  --chat-bg-sidebar: #f4f4f5;
+  --chat-bg-main: #ffffff;
+  --chat-bg-header: rgba(255, 255, 255, 0.85);
+  --chat-bg-composer: rgba(255, 255, 255, 0.92);
+
+  /* macOS Messages bubble colors */
+  --chat-bubble-outgoing: #34c759;
+  --chat-bubble-outgoing-text: #ffffff;
+  --chat-bubble-incoming: #e9e9eb;
+  --chat-bubble-incoming-text: #18181b;
+
+  --chat-accent: #007aff;
+  --chat-accent-soft: rgba(0, 122, 255, 0.1);
+  --chat-green: #34c759;
+  --chat-orange: #f59e0b;
+  --chat-red: #ef4444;
+
+  --chat-text-primary: #18181b;
+  --chat-text-secondary: #71717a;
+  --chat-text-tertiary: #a1a1aa;
+  --chat-border: rgba(0, 0, 0, 0.06);
+  --chat-border-strong: rgba(0, 0, 0, 0.1);
+
+  --chat-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --chat-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.06);
+  --chat-shadow-lg: 0 8px 30px rgba(0, 0, 0, 0.08);
+  --chat-shadow-toolbar: 0 2px 16px rgba(0, 0, 0, 0.12);
+
+  --chat-bubble-radius: 18px;
+  --chat-bubble-radius-grouped: 6px;
+  --chat-input-radius: 20px;
+  --chat-spacing-messages: 14px;
+  --chat-spacing-grouped: 2px;
+  --chat-ease: cubic-bezier(0.25, 0.1, 0.25, 1);
+  --chat-duration-fast: 150ms;
+  --chat-duration-normal: 250ms;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+body {
+  font-family: var(--chat-font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background: var(--chat-bg-app);
+  color: var(--chat-text-primary);
+}
+
+.titlebar {
+  -webkit-app-region: drag;
+}
+
+.titlebar button {
+  -webkit-app-region: no-drag;
+}
+
+/* chatcn animations */
+@keyframes chat-toolbar-enter {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.chat-toolbar-enter {
+  animation: chat-toolbar-enter var(--chat-duration-fast) var(--chat-ease);
+}
+
+.chat-messages {
+  font-family: var(--chat-font-sans);
+}

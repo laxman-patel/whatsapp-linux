@@ -1,0 +1,36 @@
+{
+  "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
+  "appId": "com.whatsapp-desktop.linux",
+  "productName": "WhatsApp Desktop",
+  "asar": true,
+  "directories": {
+    "output": "release/${version}"
+  },
+  "files": [
+    "dist-electron",
+    "dist"
+  ],
+  "linux": {
+    "target": ["AppImage"],
+    "category": "Network",
+    "artifactName": "${productName}-${version}.${ext}",
+    "desktop": {
+      "Name": "WhatsApp Desktop",
+      "Comment": "Unofficial WhatsApp client for Linux",
+      "Categories": "Network;InstantMessaging;"
+    }
+  },
+  "mac": {
+    "artifactName": "${productName}_${version}.${ext}",
+    "target": ["dmg", "zip"]
+  },
+  "win": {
+    "target": [
+      {
+        "target": "nsis",
+        "arch": ["x64"]
+      }
+    ],
+    "artifactName": "${productName}_${version}.${ext}"
+  }
+}
