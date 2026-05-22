@@ -528,7 +528,7 @@ export function upsertMessageFromProtocol(msg: ProtocolMessage, meId: string): M
   if (!isRenderableChatJid(chatJid)) return null
 
   const text = getMessageText(msg)
-  if (!text) return null
+  if (!text) return null // live path skips empty payloads
 
   const alias = getMessageContactAlias(msg)
   if (alias) linkContactAlias(alias.lid, alias.jid)
@@ -1065,6 +1065,54 @@ export function listMessagesFromDb(
     rows.length >= limit && oldest ? String(oldest.timestamp) : undefined
 
   return { messages, nextCursor }
+}
+
+export function countMessagesForChat(chatJid: string): number {
+  const row = getDb()
+    .prepare('SELECT COUNT(*) AS c FROM messages WHERE chat_jid = ?')
+    .get(chatJid) as { c: number } | undefined
+  return row?.c ?? 0
+}
+
+export function getOldestMessageAnchor(
+  chatJid: string,
+): { chat: string; sender: string; id: string; timestamp: number } | null {
+  const row = getDb()
+    .prepare(
+      `SELECT id, chat_jid, sender_id, timestamp
+       FROM messages WHERE chat_jid = ? ORDER BY timestamp ASC LIMIT 1`,
+    )
+    .get(chatJid) as
+    | { id: string; chat_jid: string; sender_id: string; timestamp: number }
+    | undefined
+
+  if (!row) return null
+
+  const match = row.id.match(/^(.+):([^:]+):([01]):/)
+  const msgId = match?.[2] ?? row.id
+
+  return {
+    chat: row.chat_jid,
+    sender: row.sender_id,
+    id: msgId,
+    timestamp: Math.floor(row.timestamp / 1000),
+  }
+}
+
+export function listChatsWithoutMessages(limit = 100): string[] {
+  const rows = getDb()
+    .prepare(
+      `SELECT c.jid
+       FROM chats c
+       LEFT JOIN messages m ON m.chat_jid = c.jid
+       WHERE m.id IS NULL
+       GROUP BY c.jid
+       ORDER BY c.is_group DESC, COALESCE(c.last_message_time, 0) DESC
+       LIMIT ?`,
+    )
+    .all(limit) as { jid: string }[]
+
+  return rows.map((row) => row.jid)
 }
 
 export function getMessageFromDb(key: {

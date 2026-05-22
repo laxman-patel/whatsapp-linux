@@ -32,6 +32,18 @@ jobs:
             libsecret-1-dev \
             python3
 
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Build patched whatsmeow-node binary
+        run: |
+          git clone --depth 1 https://github.com/nicastelo/whatsmeow-node.git /tmp/wm-node-src
+          patch -p1 -d /tmp/wm-node-src < patches/whatsmeow-node-history-sync.patch
+          mkdir -p bin
+          (cd /tmp/wm-node-src/cmd/whatsmeow-node && go build -o "$GITHUB_WORKSPACE/bin/whatsmeow-node" .)
+
       - name: Install npm dependencies
         env:
           npm_config_ignore_scripts: 'true'

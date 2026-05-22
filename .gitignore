@@ -12,6 +12,8 @@ dist
 dist-ssr
 dist-electron
 release
+bin/whatsmeow-node
+bin/whatsmeow-node.exe
 .firecrawl
 *.local
 

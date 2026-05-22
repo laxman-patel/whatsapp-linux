@@ -1,4 +1,4 @@
-import type { WhatsmeowClient } from '@whatsmeow-node/whatsmeow-node'
+import type { MessageInfo, WhatsmeowClient } from '@whatsmeow-node/whatsmeow-node'
 import {
   deleteChats,
   incrementChatUnread,
@@ -22,63 +22,145 @@ import {
 import {
   enqueueHistoryMessage,
   flushHistoryQueue,
-  isHistorySyncActive,
   setHistorySyncActive,
   setSyncQueueMeId,
   upsertLiveMessage,
 } from './sync-queue'
-import { groupInfoToProtocolChat, messageEventToProtocol, pushNameToContact } from './adapter'
+import {
+  groupInfoToProtocolChat,
+  messageEventToProtocol,
+  pushNameToContact,
+} from './adapter'
+import { importFromSessionStore } from './session-import'
+import {
+  attachHistoryBackfillClient,
+  isBackfillBusy,
+  queueHistoryBackfill,
+  onHistoryBackfillIdle,
+} from './history-backfill'
 
 let meId = ''
+let syncIdleTimer: ReturnType<typeof setTimeout> | null = null
+
+interface HistorySyncPayload {
+  type?: string
+  progress?: number
+  messages?: Array<{ info: MessageInfo; message: Record<string, unknown> }>
+  pushNames?: Array<{ jid: string; pushName: string }>
+}
 
 export function getMeId(): string {
   return meId
 }
 
+function scheduleSyncIdleCheck(delayMs = 8000): void {
+  if (syncIdleTimer) clearTimeout(syncIdleTimer)
+  syncIdleTimer = setTimeout(() => {
+    syncIdleTimer = null
+    void tryCompleteSync()
+  }, delayMs)
+}
+
+async function tryCompleteSync(): Promise<void> {
+  if (isBackfillBusy()) return
+  await flushHistoryQueue()
+  if (isBackfillBusy()) return
+  setHistorySyncActive(false)
+  onHistorySyncComplete()
+  scheduleChatsNotify(true)
+}
+
+function ingestMessage(
+  info: MessageInfo,
+  message: Record<string, unknown>,
+  opts: { history?: boolean } = {},
+): void {
+  const protocolMsg = messageEventToProtocol(info, message)
+  const activeJid = getActiveChat()
+
+  if (opts.history) {
+    enqueueHistoryMessage(protocolMsg)
+    return
+  }
+
+  const record = upsertLiveMessage(protocolMsg)
+  if (!record) return
+
+  scheduleMessagesNotify(record.chatJid)
+
+  if (
+    chatJidIsGroup(record.chatJid) &&
+    !record.isFromMe &&
+    (record.senderId.endsWith('@s.whatsapp.net') || record.senderId.endsWith('@lid'))
+  ) {
+    queueAvatarFetches([record.senderId])
+  }
+
+  if (!record.isFromMe && record.chatJid !== activeJid) {
+    incrementChatUnread(record.chatJid)
+  }
+}
+
+function handleHistorySyncPayload(data: HistorySyncPayload): void {
+  setHistorySyncActive(true)
+
+  if (typeof data.progress === 'number') {
+    recordHistoryChunk({ progress: data.progress })
+  } else {
+    recordHistoryChunk({ progress: undefined })
+  }
+
+  if (data.pushNames?.length) {
+    upsertContacts(
+      data.pushNames
+        .filter((pn) => pn.jid && pn.pushName?.trim())
+        .map((pn) => pushNameToContact(pn.jid, pn.pushName)),
+    )
+  }
+
+  if (data.messages?.length) {
+    console.log(
+      `[whatsmeow] history_sync batch type=${data.type ?? '?'} messages=${data.messages.length} progress=${data.progress ?? 'n/a'}`,
+    )
+    for (const item of data.messages) {
+      ingestMessage(item.info, item.message, { history: true })
+    }
+    scheduleSyncIdleCheck(6000)
+  }
+
+  scheduleSyncIdleCheck(8000)
+}
+
 export function registerWhatsmeowHandlers(client: WhatsmeowClient): void {
+  attachHistoryBackfillClient(client)
+
+  onHistoryBackfillIdle(() => {
+    void tryCompleteSync()
+  })
+
   client.on('connected', ({ jid }) => {
     meId = jid.includes('@') ? jid : `${jid}@s.whatsapp.net`
     setSyncQueueMeId(meId)
-    void hydrateInitialData(client)
+    void bootstrapAfterConnect(client)
   })
 
-  client.on('history_sync', ({ type }) => {
-    console.log('[whatsmeow] history_sync type=' + type)
-    setHistorySyncActive(true)
-    recordHistoryChunk({ progress: undefined })
+  client.on('history_sync', (data: HistorySyncPayload) => {
+    console.log(
+      `[whatsmeow] history_sync type=${data.type ?? '?'} progress=${data.progress ?? 'n/a'} messages=${data.messages?.length ?? 0}`,
+    )
+    handleHistorySyncPayload(data)
   })
 
   client.on('message', ({ info, message }) => {
     try {
-      const protocolMsg = messageEventToProtocol(info, message)
-      const activeJid = getActiveChat()
-
-      if (isHistorySyncActive()) {
-        enqueueHistoryMessage(protocolMsg)
-      } else {
-        const record = upsertLiveMessage(protocolMsg)
-        if (!record) return
-        scheduleMessagesNotify(record.chatJid)
-
-        if (
-          chatJidIsGroup(record.chatJid) &&
-          !record.isFromMe &&
-          (record.senderId.endsWith('@s.whatsapp.net') ||
-            record.senderId.endsWith('@lid'))
-        ) {
-          queueAvatarFetches([record.senderId])
-        }
-
-        if (!record.isFromMe && record.chatJid !== activeJid) {
-          incrementChatUnread(record.chatJid)
-        }
-      }
+      ingestMessage(info, message)
 
       if (info.pushName?.trim() && !info.isFromMe) {
         upsertContacts([pushNameToContact(info.sender, info.pushName)])
       }
 
       scheduleChatsNotify()
+      scheduleSyncIdleCheck(4000)
     } catch (err) {
       console.error('[whatsmeow] message handler failed:', err)
     }
@@ -109,8 +191,11 @@ export function registerWhatsmeowHandlers(client: WhatsmeowClient): void {
   })
 }
 
-async function hydrateInitialData(client: WhatsmeowClient): Promise<void> {
+async function bootstrapAfterConnect(client: WhatsmeowClient): Promise<void> {
   setHistorySyncActive(true)
+
+  importFromSessionStore()
+  scheduleChatsNotify(true)
 
   try {
     await client.fetchAppState('regular_high', true, false)
@@ -137,13 +222,9 @@ async function hydrateInitialData(client: WhatsmeowClient): Promise<void> {
     console.warn('[whatsmeow] getJoinedGroups failed:', err)
   }
 
-  // Allow history messages to drain, then mark sync complete.
-  setTimeout(async () => {
-    await flushHistoryQueue()
-    setHistorySyncActive(false)
-    onHistorySyncComplete()
-    scheduleChatsNotify(true)
-  }, 30_000)
+  queueHistoryBackfill()
+  // Fallback only if backfill idles without calling tryCompleteSync
+  scheduleSyncIdleCheck(300_000)
 }
 
 export async function hydrateMissingGroupNames(client: WhatsmeowClient): Promise<void> {
@@ -173,4 +254,8 @@ export function handlePhoneNumberShare(lid: string, jid: string): void {
 export function handleChatDelete(jids: string[]): void {
   deleteChats(jids)
   scheduleChatsNotify(true)
+}
+
+export function requestChatHistory(client: WhatsmeowClient, chatJid: string): void {
+  queueHistoryBackfill([chatJid])
 }

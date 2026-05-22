@@ -22,6 +22,14 @@ export function isHistorySyncActive(): boolean {
   return historySyncActive
 }
 
+export function getHistoryQueueLength(): number {
+  return queue.length
+}
+
+export function isHistoryQueueDraining(): boolean {
+  return draining
+}
+
 /** Batch history messages during initial sync for better SQLite throughput. */
 export function enqueueHistoryMessage(msg: ProtocolMessage): void {
   queue.push(msg)
@@ -36,7 +44,7 @@ async function drain(): Promise<void> {
   draining = true
   try {
     while (queue.length > 0) {
-      const batch = queue.splice(0, Math.min(queue.length, 500))
+      const batch = queue.splice(0, Math.min(queue.length, 1000))
 
       try {
         const inserted = bulkUpsertHistoryMessages(batch, meId)

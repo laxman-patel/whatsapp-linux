@@ -1,0 +1,62 @@
+diff --git a/cmd/whatsmeow-node/events.go b/cmd/whatsmeow-node/events.go
+index ce0a650..b761c81 100644
+--- a/cmd/whatsmeow-node/events.go
++++ b/cmd/whatsmeow-node/events.go
+@@ -164,9 +164,54 @@ func (a *App) eventHandler(evt interface{}) {
+ 
+ 	// ── History Sync ─────────────────────────────
+ 	case *events.HistorySync:
+-		sendEvent("history_sync", map[string]interface{}{
+-			"type": v.Data.GetSyncType().String(),
+-		})
++		data := map[string]interface{}{
++			"type":     v.Data.GetSyncType().String(),
++			"progress": v.Data.GetProgress(),
++		}
++
++		a.mu.Lock()
++		client := a.client
++		a.mu.Unlock()
++
++		if client != nil {
++			var messages []map[string]interface{}
++			for _, conv := range v.Data.GetConversations() {
++				chatJID, err := types.ParseJID(conv.GetID())
++				if err != nil || chatJID.IsEmpty() {
++					continue
++				}
++				for _, histMsg := range conv.GetMessages() {
++					webMsg := histMsg.GetMessage()
++					if webMsg == nil {
++						continue
++					}
++					evt, err := client.ParseWebMessage(chatJID, webMsg)
++					if err != nil {
++						continue
++					}
++					messages = append(messages, map[string]interface{}{
++						"info":    serializeMessageInfo(evt.Info),
++						"message": protoToMap(evt.Message),
++					})
++				}
++			}
++			if len(messages) > 0 {
++				data["messages"] = messages
++			}
++
++			if len(v.Data.GetPushnames()) > 0 {
++				pushNames := make([]map[string]interface{}, 0, len(v.Data.GetPushnames()))
++				for _, pn := range v.Data.GetPushnames() {
++					pushNames = append(pushNames, map[string]interface{}{
++						"jid":      pn.GetID(),
++						"pushName": pn.GetPushname(),
++					})
++				}
++				data["pushNames"] = pushNames
++			}
++		}
++
++		sendEvent("history_sync", data)
+ 	}
+ }
+ 

@@ -99,9 +99,7 @@ export function recordHistoryChunk(stats: {
     message: buildMessage(messagesSynced, chatsSynced, progress),
   })
 
-  if (stats.isLatest && progress >= 100) {
-    finishSync()
-  }
+  // Completion is driven by history-backfill idle + tryCompleteSync in handlers.
 }
 
 export function onHistorySyncComplete() {
@@ -142,8 +140,8 @@ function finishSync() {
   }, 2500)
 }
 
-/** If no history events arrive, stop showing sync UI after connect */
-export function scheduleSyncIdleFallback(ms = 8000) {
+/** Last-resort timeout if backfill never signals idle (should not fire during normal sync). */
+export function scheduleSyncIdleFallback(ms = 600_000) {
   if (idleTimer) clearTimeout(idleTimer)
   idleTimer = setTimeout(() => {
     if (state.active && Date.now() - syncStartedAt > ms - 500) {

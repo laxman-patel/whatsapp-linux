@@ -4,6 +4,7 @@ import {
 } from '@whatsmeow-node/whatsmeow-node'
 import path from 'node:path'
 import fs from 'node:fs/promises'
+import { existsSync } from 'node:fs'
 import { app } from 'electron'
 import QRCode from 'qrcode'
 import type { ConnectionStatus } from '../../../src/shared/ipc'
@@ -21,6 +22,7 @@ import {
 } from '../db/repositories'
 import { queueAvatarFetches, resetAvatarCache } from './avatars'
 import { hydrateContactAliasesFromPhonebook } from './contact-aliases'
+import { attachHistoryBackfillClient, resetHistoryBackfill } from './history-backfill'
 
 export interface ConnectionPayload {
   status: ConnectionStatus
@@ -70,10 +72,16 @@ function getSessionStorePath(): string {
 }
 
 function resolveWhatsmeowBinary(): string | undefined {
-  if (!app.isPackaged) return undefined
-
   const name = process.platform === 'win32' ? 'whatsmeow-node.exe' : 'whatsmeow-node'
-  return path.join(process.resourcesPath, 'whatsmeow-bin', name)
+
+  const projectBin = path.join(app.getAppPath(), 'bin', name)
+  if (existsSync(projectBin)) return projectBin
+
+  if (app.isPackaged) {
+    return path.join(process.resourcesPath, 'whatsmeow-bin', name)
+  }
+
+  return undefined
 }
 
 export function getConnectionState(): ConnectionPayload {
@@ -118,6 +126,11 @@ export async function startWhatsApp(): Promise<void> {
     await ensureCompatibleAuthState()
 
     const binaryPath = resolveWhatsmeowBinary()
+    if (!binaryPath) {
+      console.warn(
+        '[whatsmeow] Patched binary not found at bin/whatsmeow-node — run npm run build:whatsmeow. Message history may not load.',
+      )
+    }
     const wa = createClient({
       store: getSessionStorePath(),
       ...(binaryPath ? { binaryPath } : {}),
@@ -139,8 +152,9 @@ export async function startWhatsApp(): Promise<void> {
 
     wa.on('connected', () => {
       setState({ status: 'connected' })
+      attachHistoryBackfillClient(wa)
       beginSync()
-      scheduleSyncIdleFallback(45_000)
+      scheduleSyncIdleFallback(600_000)
       broadcast(IPC_CHANNELS.chatsUpdated)
       void hydrateMissingGroupNames(wa)
       void hydrateContactAliasesFromPhonebook(wa)
@@ -218,6 +232,7 @@ export async function logoutWhatsApp(): Promise<void> {
   clearDatabase()
   resetSyncProgress()
   resetAvatarCache()
+  resetHistoryBackfill()
 
   setState({ status: 'connecting', message: 'Starting fresh session…' })
   await startWhatsApp()

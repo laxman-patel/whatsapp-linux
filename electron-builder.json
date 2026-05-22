@@ -16,7 +16,7 @@
     ],
     "extraResources": [
       {
-        "from": "node_modules/@whatsmeow-node/linux-x64/bin/whatsmeow-node",
+        "from": "bin/whatsmeow-node",
         "to": "whatsmeow-bin/whatsmeow-node"
       }
     ],

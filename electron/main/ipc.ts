@@ -28,6 +28,8 @@ import {
 import { setActiveChat } from './active-chat'
 import { queueAvatarFetches } from './whatsmeow/avatars'
 import { hydrateContactAliasesFromPhonebook } from './whatsmeow/contact-aliases'
+import { requestChatHistory } from './whatsmeow/handlers'
+import { queueHistoryBackfill } from './whatsmeow/history-backfill'
 
 interface StoredSettings extends Record<string, ChatFilter | ColorScheme> {
   chatFilter: ChatFilter
@@ -70,36 +72,38 @@ export function registerIpcHandlers() {
   )
 
   ipcMain.handle(IPC_CHANNELS.chatOpen, async (_, jid: string) => {
-    if (!chatJidIsGroup(jid)) return null
-
     const wa = getClient()
-    if (!wa) {
-      repairGroupChatSenderNames(jid)
-      scheduleMessagesNotify(jid)
-      scheduleChatsNotify(true)
-      return null
+
+    if (wa) {
+      requestChatHistory(wa, jid)
+
+      if (chatJidIsGroup(jid)) {
+        try {
+          const meta = await wa.getGroupInfo(jid)
+          const count = meta.participants?.length ?? 0
+          upsertGroupInfo({
+            id: meta.jid,
+            subject: meta.name,
+            participants: meta.participants.map((p) => ({ id: p.jid, jid: p.jid })),
+          })
+          void hydrateContactAliasesFromPhonebook(wa)
+          queueAvatarFetches(meta.participants.map((p) => p.jid))
+          repairGroupChatSenderNames(jid)
+          scheduleMessagesNotify(jid)
+          scheduleChatsNotify(true)
+          return { participantCount: count }
+        } catch {
+          // fall through
+        }
+      } else {
+        queueAvatarFetches([jid])
+      }
     }
 
-    try {
-      const meta = await wa.getGroupInfo(jid)
-      const count = meta.participants?.length ?? 0
-      upsertGroupInfo({
-        id: meta.jid,
-        subject: meta.name,
-        participants: meta.participants.map((p) => ({ id: p.jid, jid: p.jid })),
-      })
-      void hydrateContactAliasesFromPhonebook(wa)
-      queueAvatarFetches(meta.participants.map((p) => p.jid))
-      repairGroupChatSenderNames(jid)
-      scheduleMessagesNotify(jid)
-      scheduleChatsNotify(true)
-      return { participantCount: count }
-    } catch {
-      repairGroupChatSenderNames(jid)
-      scheduleMessagesNotify(jid)
-      scheduleChatsNotify(true)
-      return { participantCount: undefined }
-    }
+    repairGroupChatSenderNames(jid)
+    scheduleMessagesNotify(jid)
+    scheduleChatsNotify(true)
+    return { participantCount: undefined }
   })
 
   ipcMain.handle(IPC_CHANNELS.chatMarkRead, (_, jid: string) => {
@@ -118,8 +122,9 @@ export function registerIpcHandlers() {
   ipcMain.handle(IPC_CHANNELS.syncTrigger, () => {
     queueAvatarFetches(listChatsMissingAvatar())
     void hydrateContactAliasesFromPhonebook(getClient())
+    queueHistoryBackfill()
     beginSync()
-    scheduleSyncIdleFallback(8000)
+    scheduleSyncIdleFallback(30_000)
     scheduleChatsNotify(true)
   })
 

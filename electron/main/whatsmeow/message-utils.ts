@@ -44,8 +44,12 @@ export function getMessageText(msg: ProtocolMessage): string | undefined {
   if (content.contactMessage) return 'Contact'
   if (content.locationMessage) return 'Location'
   if (content.pollCreationMessage) return 'Poll'
+  if (content.buttonsMessage) return 'Message'
+  if (content.listMessage) return 'Message'
+  if (content.templateMessage) return 'Message'
+  if (content.protocolMessage) return undefined
 
-  return undefined
+  return 'Message'
 }
 
 export function getMessageTimestamp(msg: ProtocolMessage): number {
