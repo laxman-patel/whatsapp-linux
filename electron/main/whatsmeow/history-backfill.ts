@@ -9,13 +9,13 @@ import { getAuthDir } from './client'
 import { recordHistoryChunk } from '../sync-progress'
 import { getHistoryQueueLength, isHistoryQueueDraining } from './sync-queue'
 
-const PARALLEL_REQUESTS = 12
+const PARALLEL_REQUESTS = 16
 const HISTORY_PAGE_SIZE = 50
-const RESPONSE_WAIT_MS = 2000
-const MAX_PAGES_PER_CHAT = 300
-const EMPTY_PAGES_BEFORE_DONE = 2
-const RESCAN_MS = 12_000
-const IDLE_DEBOUNCE_MS = 4000
+const RESPONSE_WAIT_MS = 8000
+const MAX_PAGES_PER_CHAT = 2000
+const EMPTY_PAGES_BEFORE_DONE = 4
+const RESCAN_MS = 15_000
+const IDLE_DEBOUNCE_MS = 6000
 
 interface MessageAnchor {
   chat: string
@@ -151,9 +151,59 @@ function readLidPhoneMap(): Map<string, string> {
 }
 
 function anchorForChat(chatJid: string): MessageAnchor | null {
-  const fromDb = getOldestMessageAnchor(chatJid)
-  if (fromDb) return fromDb
+  for (const jid of jidVariants(chatJid)) {
+    const fromDb = getOldestMessageAnchor(jid)
+    if (fromDb) return fromDb
+  }
   return readSessionAnchors().get(chatJid) ?? null
+}
+
+function readSessionChatJids(): string[] {
+  const sessionPath = path.join(getAuthDir(), 'session.db')
+  let sessionDb: Database.Database
+  try {
+    sessionDb = new Database(sessionPath, { readonly: true, fileMustExist: true })
+  } catch {
+    return []
+  }
+
+  try {
+    const rows = sessionDb
+      .prepare('SELECT chat_jid FROM whatsmeow_chat_settings')
+      .all() as { chat_jid: string }[]
+    return rows
+      .map((row) => row.chat_jid.trim())
+      .filter(
+        (jid) =>
+          jid &&
+          jid !== '0@s.whatsapp.net' &&
+          !jid.endsWith('@newsletter') &&
+          jid !== 'status@broadcast',
+      )
+  } finally {
+    sessionDb.close()
+  }
+}
+
+function jidVariants(chatJid: string): string[] {
+  const variants = new Set<string>([chatJid])
+  if (chatJid.endsWith('@lid')) {
+    const phoneJid = readLidPhoneMap().get(chatJid)
+    if (phoneJid) variants.add(phoneJid)
+  } else if (chatJid.endsWith('@s.whatsapp.net')) {
+    for (const [lid, pn] of readLidPhoneMap()) {
+      if (pn === chatJid) variants.add(lid)
+    }
+  }
+  return [...variants]
+}
+
+function countMessagesForChatVariants(chatJid: string): number {
+  let total = 0
+  for (const jid of jidVariants(chatJid)) {
+    total += countMessagesForChat(jid)
+  }
+  return total
 }
 
 function anchorCandidates(chatJid: string): MessageAnchor[] {
@@ -181,16 +231,29 @@ function discoverBackfillTargets(): string[] {
   const targets = new Set<string>()
 
   for (const chat of readSessionAnchors().keys()) {
-    if (!chat.endsWith('@newsletter') && chat !== 'status@broadcast') {
-      targets.add(chat)
-    }
+    targets.add(chat)
+  }
+  for (const chat of readSessionChatJids()) {
+    targets.add(chat)
   }
 
-  return [...targets].filter((jid) => !exhausted.has(jid))
+  return [...targets].filter(
+    (jid) =>
+      !jid.endsWith('@newsletter') &&
+      jid !== 'status@broadcast' &&
+      !exhausted.has(jid),
+  )
 }
 
-function enqueue(chatJid: string): void {
-  if (exhausted.has(chatJid)) return
+function resetChatBackfill(chatJid: string): void {
+  exhausted.delete(chatJid)
+  awaitingResponse.delete(chatJid)
+  inFlight.delete(chatJid)
+  chatProgress.delete(chatJid)
+}
+
+function enqueue(chatJid: string, force = false): void {
+  if (!force && exhausted.has(chatJid)) return
   pending.add(chatJid)
 }
 
@@ -227,7 +290,7 @@ async function sendHistoryRequest(
       await client.sendPeerMessage(req)
       totalPagesRequested++
       awaitingResponse.set(chatJid, {
-        countAtSend: countMessagesForChat(chatJid),
+        countAtSend: countMessagesForChatVariants(chatJid),
         sentAt: Date.now(),
       })
       return true
@@ -314,7 +377,7 @@ async function responsePoller(): Promise<void> {
       if (!req) continue
       awaitingResponse.delete(chatJid)
       const prog = progressFor(chatJid)
-      const after = countMessagesForChat(chatJid)
+      const after = countMessagesForChatVariants(chatJid)
       const grew = after > req.countAtSend
 
       if (grew) {
@@ -380,13 +443,15 @@ export function attachHistoryBackfillClient(client: WhatsmeowClient | null): voi
   }
 }
 
-export function queueHistoryBackfill(chatJids?: string[]): void {
+export function queueHistoryBackfill(chatJids?: string[], force = false): void {
   if (!clientRef) return
 
+  const explicit = chatJids !== undefined
   const targets = chatJids ?? discoverBackfillTargets()
 
   for (const jid of targets) {
-    enqueue(jid)
+    if (explicit || force) resetChatBackfill(jid)
+    enqueue(jid, explicit || force)
   }
 
   void requestPump()

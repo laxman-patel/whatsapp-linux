@@ -122,7 +122,7 @@ export function registerIpcHandlers() {
   ipcMain.handle(IPC_CHANNELS.syncTrigger, () => {
     queueAvatarFetches(listChatsMissingAvatar())
     void hydrateContactAliasesFromPhonebook(getClient())
-    queueHistoryBackfill()
+    queueHistoryBackfill(undefined, true)
     beginSync()
     scheduleSyncIdleFallback(30_000)
     scheduleChatsNotify(true)

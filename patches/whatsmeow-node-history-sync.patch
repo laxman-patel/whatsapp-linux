@@ -1,8 +1,6 @@
-diff --git a/cmd/whatsmeow-node/events.go b/cmd/whatsmeow-node/events.go
-index ce0a650..b761c81 100644
---- a/cmd/whatsmeow-node/events.go
-+++ b/cmd/whatsmeow-node/events.go
-@@ -164,9 +164,54 @@ func (a *App) eventHandler(evt interface{}) {
+--- a/cmd/whatsmeow-node/events.go	2026-05-22 19:50:54.786639080 +0530
++++ b/cmd/whatsmeow-node/events.go	2026-05-22 19:50:46.960348524 +0530
+@@ -164,9 +164,87 @@
  
  	// ── History Sync ─────────────────────────────
  	case *events.HistorySync:
@@ -20,10 +18,33 @@ index ce0a650..b761c81 100644
 +
 +		if client != nil {
 +			var messages []map[string]interface{}
-+			for _, conv := range v.Data.GetConversations() {
++			var jidAliases []map[string]interface{}
++			parseFailures := 0
++			conversations := v.Data.GetConversations()
++			allConversationsComplete := len(conversations) > 0
++
++			for _, conv := range conversations {
++				if !conv.GetEndOfHistoryTransfer() {
++					allConversationsComplete = false
++				}
++
++				if oldJID := conv.GetOldJID(); oldJID != "" {
++					if newJID := conv.GetNewJID(); newJID != "" {
++						jidAliases = append(jidAliases, map[string]interface{}{
++							"oldJid": oldJID,
++							"newJid": newJID,
++						})
++					}
++				}
++
 +				chatJID, err := types.ParseJID(conv.GetID())
 +				if err != nil || chatJID.IsEmpty() {
-+					continue
++					if newJID := conv.GetNewJID(); newJID != "" {
++						chatJID, err = types.ParseJID(newJID)
++					}
++					if err != nil || chatJID.IsEmpty() {
++						continue
++					}
 +				}
 +				for _, histMsg := range conv.GetMessages() {
 +					webMsg := histMsg.GetMessage()
@@ -32,6 +53,7 @@ index ce0a650..b761c81 100644
 +					}
 +					evt, err := client.ParseWebMessage(chatJID, webMsg)
 +					if err != nil {
++						parseFailures++
 +						continue
 +					}
 +					messages = append(messages, map[string]interface{}{
@@ -42,6 +64,15 @@ index ce0a650..b761c81 100644
 +			}
 +			if len(messages) > 0 {
 +				data["messages"] = messages
++			}
++			if len(jidAliases) > 0 {
++				data["jidAliases"] = jidAliases
++			}
++			if parseFailures > 0 {
++				data["parseFailures"] = parseFailures
++			}
++			if v.Data.GetProgress() >= 100 || allConversationsComplete {
++				data["historyComplete"] = true
 +			}
 +
 +			if len(v.Data.GetPushnames()) > 0 {

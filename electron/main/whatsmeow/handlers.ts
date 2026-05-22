@@ -41,10 +41,18 @@ import {
 
 let meId = ''
 let syncIdleTimer: ReturnType<typeof setTimeout> | null = null
+let initialHistorySyncComplete = false
+let lastHistorySyncEventAt = 0
+
+const INITIAL_HISTORY_QUIET_MS = 120_000
+const MIN_HISTORY_QUIET_MS = 45_000
 
 interface HistorySyncPayload {
   type?: string
   progress?: number
+  historyComplete?: boolean
+  parseFailures?: number
+  jidAliases?: Array<{ oldJid: string; newJid: string }>
   messages?: Array<{ info: MessageInfo; message: Record<string, unknown> }>
   pushNames?: Array<{ jid: string; pushName: string }>
 }
@@ -62,9 +70,31 @@ function scheduleSyncIdleCheck(delayMs = 8000): void {
 }
 
 async function tryCompleteSync(): Promise<void> {
-  if (isBackfillBusy()) return
+  if (isBackfillBusy()) {
+    scheduleSyncIdleCheck(15_000)
+    return
+  }
+
+  const quietFor = Date.now() - lastHistorySyncEventAt
+  if (
+    lastHistorySyncEventAt > 0 &&
+    !initialHistorySyncComplete &&
+    quietFor < INITIAL_HISTORY_QUIET_MS
+  ) {
+    scheduleSyncIdleCheck(INITIAL_HISTORY_QUIET_MS - quietFor + 2000)
+    return
+  }
+
+  if (lastHistorySyncEventAt > 0 && quietFor < MIN_HISTORY_QUIET_MS) {
+    scheduleSyncIdleCheck(MIN_HISTORY_QUIET_MS - quietFor + 2000)
+    return
+  }
+
   await flushHistoryQueue()
-  if (isBackfillBusy()) return
+  if (isBackfillBusy()) {
+    scheduleSyncIdleCheck(15_000)
+    return
+  }
   setHistorySyncActive(false)
   onHistorySyncComplete()
   scheduleChatsNotify(true)
@@ -102,12 +132,29 @@ function ingestMessage(
 }
 
 function handleHistorySyncPayload(data: HistorySyncPayload): void {
+  lastHistorySyncEventAt = Date.now()
   setHistorySyncActive(true)
+
+  if (data.historyComplete || (typeof data.progress === 'number' && data.progress >= 100)) {
+    initialHistorySyncComplete = true
+  }
 
   if (typeof data.progress === 'number') {
     recordHistoryChunk({ progress: data.progress })
   } else {
     recordHistoryChunk({ progress: undefined })
+  }
+
+  if (data.jidAliases?.length) {
+    for (const alias of data.jidAliases) {
+      if (alias.oldJid && alias.newJid) {
+        linkContactAlias(alias.oldJid, alias.newJid)
+      }
+    }
+  }
+
+  if (data.parseFailures) {
+    console.warn(`[whatsmeow] history_sync skipped ${data.parseFailures} messages (parse errors)`)
   }
 
   if (data.pushNames?.length) {
@@ -125,10 +172,10 @@ function handleHistorySyncPayload(data: HistorySyncPayload): void {
     for (const item of data.messages) {
       ingestMessage(item.info, item.message, { history: true })
     }
-    scheduleSyncIdleCheck(6000)
+    scheduleSyncIdleCheck(INITIAL_HISTORY_QUIET_MS)
+  } else {
+    scheduleSyncIdleCheck(initialHistorySyncComplete ? MIN_HISTORY_QUIET_MS : INITIAL_HISTORY_QUIET_MS)
   }
-
-  scheduleSyncIdleCheck(8000)
 }
 
 export function registerWhatsmeowHandlers(client: WhatsmeowClient): void {
@@ -153,14 +200,20 @@ export function registerWhatsmeowHandlers(client: WhatsmeowClient): void {
 
   client.on('message', ({ info, message }) => {
     try {
-      ingestMessage(info, message)
+      const duringSync = isBackfillBusy() || !initialHistorySyncComplete
+      ingestMessage(info, message, duringSync ? { history: true } : undefined)
 
       if (info.pushName?.trim() && !info.isFromMe) {
         upsertContacts([pushNameToContact(info.sender, info.pushName)])
       }
 
       scheduleChatsNotify()
-      scheduleSyncIdleCheck(4000)
+      if (duringSync) {
+        lastHistorySyncEventAt = Date.now()
+        scheduleSyncIdleCheck(MIN_HISTORY_QUIET_MS)
+      } else {
+        scheduleSyncIdleCheck(4000)
+      }
     } catch (err) {
       console.error('[whatsmeow] message handler failed:', err)
     }
@@ -192,6 +245,8 @@ export function registerWhatsmeowHandlers(client: WhatsmeowClient): void {
 }
 
 async function bootstrapAfterConnect(client: WhatsmeowClient): Promise<void> {
+  initialHistorySyncComplete = false
+  lastHistorySyncEventAt = 0
   setHistorySyncActive(true)
 
   importFromSessionStore()
@@ -223,8 +278,7 @@ async function bootstrapAfterConnect(client: WhatsmeowClient): Promise<void> {
   }
 
   queueHistoryBackfill()
-  // Fallback only if backfill idles without calling tryCompleteSync
-  scheduleSyncIdleCheck(300_000)
+  scheduleSyncIdleCheck(INITIAL_HISTORY_QUIET_MS)
 }
 
 export async function hydrateMissingGroupNames(client: WhatsmeowClient): Promise<void> {
@@ -256,6 +310,6 @@ export function handleChatDelete(jids: string[]): void {
   scheduleChatsNotify(true)
 }
 
-export function requestChatHistory(client: WhatsmeowClient, chatJid: string): void {
-  queueHistoryBackfill([chatJid])
+export function requestChatHistory(_client: WhatsmeowClient, chatJid: string): void {
+  queueHistoryBackfill([chatJid], true)
 }
