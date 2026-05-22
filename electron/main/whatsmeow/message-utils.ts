@@ -1,42 +1,45 @@
-import {
-  extractMessageContent,
-  getChatId,
-  isJidGroup,
-  jidNormalizedUser,
-  type WAMessage,
-} from '@whiskeysockets/baileys'
+import type { ProtocolMessage } from '../protocol/types'
+import { isJidGroup, jidNormalizedUser } from './jid'
 
 export function isRenderableChatJid(jid: string | null | undefined): jid is string {
   if (!jid) return false
   if (jid === 'status@broadcast') return false
   if (jid.endsWith('@newsletter')) return false
   if (jid.endsWith('@broadcast')) return false
-  return jid.endsWith('@s.whatsapp.net') || jid.endsWith('@g.us')
+  return jid.endsWith('@s.whatsapp.net') || jid.endsWith('@g.us') || jid.endsWith('@lid')
 }
 
-export function messageIdFromKey(msg: WAMessage): string {
+export function messageIdFromKey(msg: ProtocolMessage): string {
   const { remoteJid, id, fromMe } = msg.key
   return `${remoteJid}:${id}:${fromMe ? 1 : 0}:${getRawParticipant(msg) ?? ''}`
 }
 
-export function getMessageText(msg: WAMessage): string | undefined {
+function extractMessageContent(
+  message: Record<string, unknown> | undefined,
+): Record<string, unknown> | undefined {
+  if (!message) return undefined
+  const ephem = message.ephemeralMessage as { message?: Record<string, unknown> } | undefined
+  if (ephem?.message) return ephem.message
+  const viewOnce = message.viewOnceMessage as { message?: Record<string, unknown> } | undefined
+  if (viewOnce?.message) return viewOnce.message
+  return message
+}
+
+export function getMessageText(msg: ProtocolMessage): string | undefined {
   const content = extractMessageContent(msg.message)
   if (!content) return undefined
 
-  if (content.conversation) return content.conversation
-  if (content.extendedTextMessage?.text) return content.extendedTextMessage.text
-  if (content.imageMessage) {
-    return content.imageMessage.caption?.trim() || 'Photo'
-  }
-  if (content.videoMessage) {
-    return content.videoMessage.caption?.trim() || 'Video'
-  }
-  if (content.audioMessage) {
-    return content.audioMessage.ptt ? 'Voice message' : 'Audio'
-  }
-  if (content.documentMessage) {
-    return content.documentMessage.fileName || 'Document'
-  }
+  if (typeof content.conversation === 'string') return content.conversation
+  const ext = content.extendedTextMessage as { text?: string } | undefined
+  if (ext?.text) return ext.text
+  const image = content.imageMessage as { caption?: string } | undefined
+  if (image) return image.caption?.trim() || 'Photo'
+  const video = content.videoMessage as { caption?: string } | undefined
+  if (video) return video.caption?.trim() || 'Video'
+  const audio = content.audioMessage as { ptt?: boolean } | undefined
+  if (audio) return audio.ptt ? 'Voice message' : 'Audio'
+  const doc = content.documentMessage as { fileName?: string } | undefined
+  if (doc) return doc.fileName || 'Document'
   if (content.stickerMessage) return 'Sticker'
   if (content.contactMessage) return 'Contact'
   if (content.locationMessage) return 'Location'
@@ -45,16 +48,19 @@ export function getMessageText(msg: WAMessage): string | undefined {
   return undefined
 }
 
-export function getMessageTimestamp(msg: WAMessage): number {
+export function getMessageTimestamp(msg: ProtocolMessage): number {
   const ts = msg.messageTimestamp
-  if (typeof ts === 'number') return ts * 1000
+  if (typeof ts === 'number') {
+    // whatsmeow uses seconds; Baileys history often used seconds too
+    return ts < 1_000_000_000_000 ? ts * 1000 : ts
+  }
   if (typeof ts === 'object' && ts !== null && 'toNumber' in ts) {
-    return (ts as { toNumber: () => number }).toNumber() * 1000
+    const n = (ts as { toNumber: () => number }).toNumber()
+    return n < 1_000_000_000_000 ? n * 1000 : n
   }
   return Date.now()
 }
 
-/** Parse participant JID embedded in our composite message id. */
 export function parseParticipantFromMessageId(id: string): string | null {
   const match = id.match(/^(.+):([^:]+):([01]):(.*)$/)
   if (!match) return null
@@ -69,16 +75,13 @@ function normalizeParticipantJid(raw: string): string {
   return jidNormalizedUser(`${trimmed}@s.whatsapp.net`)
 }
 
-function getRawParticipant(msg: WAMessage): string | undefined {
+function getRawParticipant(msg: ProtocolMessage): string | undefined {
   const key = msg.key
   const topLevel = msg.participant?.trim()
   const phoneParticipant = key.participantPn?.trim()
   const keyParticipant = key.participant?.trim()
   const lidParticipant = key.participantLid?.trim()
 
-  // Prefer the phone-number participant where Baileys exposes it. `participant`
-  // can be a LID on newer accounts, while `participantPn` maps to saved contacts
-  // and profile-picture fetches more reliably.
   return (
     phoneParticipant ||
     (keyParticipant?.endsWith('@s.whatsapp.net') ? keyParticipant : undefined) ||
@@ -90,7 +93,7 @@ function getRawParticipant(msg: WAMessage): string | undefined {
 }
 
 export function getMessageContactAlias(
-  msg: WAMessage,
+  msg: ProtocolMessage,
 ): { lid: string; jid: string } | null {
   const key = msg.key
   const candidates = [
@@ -106,7 +109,7 @@ export function getMessageContactAlias(
   return { lid: normalizeParticipantJid(lid), jid: normalizeParticipantJid(jid) }
 }
 
-function resolveGroupParticipantJid(msg: WAMessage): string | null {
+function resolveGroupParticipantJid(msg: ProtocolMessage): string | null {
   const raw = getRawParticipant(msg)
   if (!raw) return null
   return normalizeParticipantJid(raw)
@@ -117,7 +120,6 @@ export function isLabelGroupSubject(label: string | undefined, chatTitle?: strin
   return label.trim().toLowerCase() === chatTitle.trim().toLowerCase()
 }
 
-/** Digits-only phone user part from a WhatsApp JID (or null). */
 export function phoneDigitsFromJid(jid: string): string | null {
   if (!jid.includes('@')) return null
   const user = jid.split('@')[0] ?? ''
@@ -125,17 +127,12 @@ export function phoneDigitsFromJid(jid: string): string | null {
   return digits.length >= 8 ? digits : null
 }
 
-/** True when a label is basically a phone number, not a saved/display name. */
 export function looksLikePhoneLabel(label: string): boolean {
   const t = label.trim().replace(/[\s\-()]/g, '')
   if (!t) return false
   return /^\+?\d{8,}$/.test(t)
 }
 
-/**
- * Look up a saved contact name by JID, phone digits, or suffix match
- * (handles LID vs @s.whatsapp.net and country-code variants).
- */
 export function lookupContactDisplayName(
   senderJid: string,
   contactNames: Map<string, string>,
@@ -157,7 +154,6 @@ export function lookupContactDisplayName(
   const byFull = tryKey(digits)
   if (byFull) return byFull
 
-  // India / intl: match on last 10 digits when country codes differ.
   if (digits.length > 10) {
     const bySuffix = tryKey(digits.slice(-10))
     if (bySuffix) return bySuffix
@@ -175,7 +171,6 @@ export function lookupContactDisplayName(
   return undefined
 }
 
-/** @deprecated use lookupContactDisplayName */
 export function getSenderDisplayName(
   senderJid: string,
   contactNames: Map<string, string>,
@@ -184,7 +179,7 @@ export function getSenderDisplayName(
   return lookupContactDisplayName(senderJid, contactNames, chatTitle)
 }
 
-export function resolveSenderId(msg: WAMessage, meId: string): string {
+export function resolveSenderId(msg: ProtocolMessage, meId: string): string {
   if (msg.key.fromMe) return meId
   const chatJid = resolveChatJid(msg)
   if (chatJidIsGroup(chatJid)) {
@@ -199,7 +194,7 @@ export function resolveSenderId(msg: WAMessage, meId: string): string {
 }
 
 export function resolveSenderName(
-  msg: WAMessage,
+  msg: ProtocolMessage,
   meId: string,
   contactNames: Map<string, string>,
   chatTitle?: string,
@@ -213,7 +208,6 @@ export function resolveSenderName(
   const fromContact = lookupContactDisplayName(senderId, contactNames, chatTitle)
   if (fromContact) return fromContact
 
-  // In groups, pushName is often the group subject during history sync — skip it then.
   if (pushName && !(isGroup && isLabelGroupSubject(pushName, chatTitle))) {
     return pushName
   }
@@ -221,7 +215,6 @@ export function resolveSenderName(
   return formatPhoneFromJid(senderId)
 }
 
-/** Best-effort display name for a stored group message row. */
 export function resolveStoredGroupSenderName(
   row: { id: string; sender_id: string; sender_name: string },
   contactNames: Map<string, string>,
@@ -250,7 +243,6 @@ export function resolveStoredGroupSenderName(
 
   const stored = row.sender_name.trim()
   const phoneFallback = formatPhoneFromJid(senderId)
-  // Re-resolve when DB still has a bare number from an earlier sync pass.
   if (
     stored &&
     stored.toLowerCase() !== 'unknown sender' &&
@@ -270,8 +262,8 @@ export function formatPhoneFromJid(jid: string): string {
   return user.replace(/:\d+$/, '')
 }
 
-export function resolveChatJid(msg: WAMessage): string {
-  return getChatId(msg.key)
+export function resolveChatJid(msg: ProtocolMessage): string {
+  return msg.key.remoteJid
 }
 
 export function chatJidIsGroup(jid: string): boolean {
@@ -281,7 +273,6 @@ export function chatJidIsGroup(jid: string): boolean {
 export function mapReceiptStatus(
   status?: number,
 ): 'sending' | 'sent' | 'delivered' | 'read' | 'failed' | undefined {
-  // Baileys / proto ack levels vary; treat 3+ as read, 2 as delivered
   if (status === undefined || status === null) return undefined
   if (status >= 4) return 'read'
   if (status >= 3) return 'delivered'

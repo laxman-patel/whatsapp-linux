@@ -14,6 +14,12 @@
     "target": [
       { "target": "AppImage", "arch": ["x64"] }
     ],
+    "extraResources": [
+      {
+        "from": "node_modules/@whatsmeow-node/linux-x64/bin/whatsmeow-node",
+        "to": "whatsmeow-bin/whatsmeow-node"
+      }
+    ],
     "category": "Network",
     "artifactName": "${productName}-${version}-linux-${arch}.${ext}",
     "desktop": {
@@ -31,6 +37,12 @@
       {
         "target": "nsis",
         "arch": ["x64"]
+      }
+    ],
+    "extraResources": [
+      {
+        "from": "node_modules/@whatsmeow-node/win32-x64/bin/whatsmeow-node.exe",
+        "to": "whatsmeow-bin/whatsmeow-node.exe"
       }
     ],
     "artifactName": "${productName}-${version}-windows-setup.${ext}"

@@ -94,8 +94,8 @@ export function QrLoginScreen({
       </div>
 
       <p className="mt-6 max-w-md text-center text-[11px] leading-relaxed text-[var(--chat-text-tertiary)]">
-        Unofficial client — not affiliated with WhatsApp. Using Baileys may violate
-        WhatsApp Terms of Service; account ban risk applies.
+        Unofficial client — not affiliated with WhatsApp. Using an unofficial
+        WhatsApp library may violate WhatsApp Terms of Service; account ban risk applies.
       </p>
     </div>
   )

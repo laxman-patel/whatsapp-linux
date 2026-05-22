@@ -60,7 +60,7 @@ Linux and Windows get a proper Electron window: system theme, split inbox inspir
 | UI framework | React 19 + Vite |
 | Component library | chatcn (macOS Messages style) |
 | Styling | Tailwind CSS v3 |
-| WhatsApp protocol | [Baileys](https://github.com/WhiskeySockets/Baileys) 6.x (main process only) |
+| WhatsApp protocol | [whatsmeow](https://github.com/tulir/whatsmeow) via [@whatsmeow-node/whatsmeow-node](https://www.npmjs.com/package/@whatsmeow-node/whatsmeow-node) (Go subprocess, main process only) |
 | Database | better-sqlite3 (SQLite WAL) |
 | IPC | contextBridge + typed channels (renderer never touches Node directly) |
 
@@ -129,7 +129,7 @@ Everything stays on your computer:
 
 | Path | Contents |
 |------|----------|
-| `~/.config/whatsapp-desktop/baileys-auth/` | WhatsApp session keys (Linux) |
+| `~/.config/whatsapp-desktop/whatsmeow-auth/` | WhatsApp session store (Linux) |
 | `~/.config/whatsapp-desktop/whatsapp.db` | Messages, chats, contacts (SQLite) |
 | `~/.config/whatsapp-desktop/avatars/` | Cached profile pictures |
 
@@ -142,7 +142,7 @@ The app talks to WhatsApp's servers for messaging only. This project does not ru
 ```
 electron/
   main/
-    baileys/        WhatsApp socket, avatar fetcher, contact aliases
+    whatsmeow/      WhatsApp client (Go IPC), avatars, contact aliases
     db/             SQLite schema, migrations, repositories
     index.ts        Electron app entry, protocol registration
     ipc.ts          IPC handler registration
@@ -152,7 +152,7 @@ src/
   components/       React UI components
     ui/chat/        chatcn message/sidebar/header components
   hooks/            useChats, useMessages, useSyncProgress
-  lib/adapters/     Baileys → chatcn data mappers
+  lib/adapters/     Protocol → chatcn data mappers
   shared/           IPC types shared between main & renderer
 ```
 
@@ -172,17 +172,17 @@ src/
 - [ ] Media download and display (images, video, audio, documents)
 - [ ] Send attachments from the composer
 - [ ] OS notifications for new messages
-- [ ] Read receipts via Baileys
+- [ ] Read receipts via whatsmeow
 - [ ] System tray icon and badge
 - [ ] Full-text search across SQLite
 - [ ] Per-chat export (JSON/CSV)
 
 ## Disclaimer
 
-WhatsZapp is not affiliated with Meta or WhatsApp. It uses the unofficial [Baileys](https://github.com/WhiskeySockets/Baileys) library, which reverse-engineers the WhatsApp Web protocol. Unofficial clients may violate WhatsApp's Terms of Service and can lead to account restrictions or bans. Use at your own risk.
+WhatsZapp is not affiliated with Meta or WhatsApp. It uses the unofficial [whatsmeow](https://github.com/tulir/whatsmeow) library (via Node bindings), which implements the WhatsApp Web multidevice protocol. Unofficial clients may violate WhatsApp's Terms of Service and can lead to account restrictions or bans. Use at your own risk.
 
 ## License
 
 MIT. See [LICENSE](LICENSE).
 
-Application code © 2025 Laxman. Baileys is separately licensed under its own terms.
+Application code © 2025 Laxman. whatsmeow is separately licensed under its own terms.

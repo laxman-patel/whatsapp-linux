@@ -1,5 +1,4 @@
-import type { Chat, Contact } from '@whiskeysockets/baileys'
-import { jidNormalizedUser } from '@whiskeysockets/baileys'
+import type { ProtocolChat, ProtocolContact, ProtocolMessage } from '../protocol/types'
 import type { ChatFilter, ChatSummary, MessageRecord } from '../../../src/shared/ipc'
 import { avatarUrlForJid } from '../../../src/shared/avatar'
 import { getDb } from './index'
@@ -18,8 +17,8 @@ import {
   resolveSenderId,
   resolveSenderName,
   resolveStoredGroupSenderName,
-} from '../baileys/message-utils'
-import type { WAMessage } from '@whiskeysockets/baileys'
+} from '../whatsmeow/message-utils'
+import { jidNormalizedUser } from '../whatsmeow/jid'
 
 const MESSAGE_PAGE_SIZE = 50
 
@@ -45,7 +44,7 @@ interface MessageRow {
   is_from_me: number
 }
 
-/** All JID aliases for a Baileys contact (LID + phone may differ from `id`). */
+/** All JID aliases for a contact (LID + phone may differ from `id`). */
 function contactAliasKeys(c: {
   id?: string | null
   jid?: string | null
@@ -215,7 +214,7 @@ export function repairDmChatTitles(): void {
   tx()
 }
 
-function rememberMessageSenderName(msg: WAMessage, chatJid: string): void {
+function rememberMessageSenderName(msg: ProtocolMessage, chatJid: string): void {
   if (msg.key.fromMe) return
   const pushName = msg.pushName?.trim()
   if (!pushName) return
@@ -254,11 +253,11 @@ function rememberMessageSenderName(msg: WAMessage, chatJid: string): void {
   }
 }
 
-export function upsertContact(contact: Contact): void {
+export function upsertContact(contact: ProtocolContact): void {
   upsertContacts([contact])
 }
 
-export function upsertContacts(contacts: Contact[]): void {
+export function upsertContacts(contacts: ProtocolContact[]): void {
   const namedKeys = new Set<string>()
   const stmt = getDb().prepare(
     `INSERT INTO contacts (jid, name, push_name, updated_at)
@@ -273,7 +272,7 @@ export function upsertContacts(contacts: Contact[]): void {
      WHERE jid = ? AND is_group = 0
        AND (title = ? OR title = ? OR title GLOB '[0-9]*')`,
   )
-  const tx = getDb().transaction((items: Contact[]) => {
+  const tx = getDb().transaction((items: ProtocolContact[]) => {
     const now = Date.now()
     for (const c of items) {
       const displayName =
@@ -310,7 +309,7 @@ export function upsertContacts(contacts: Contact[]): void {
   repairDmChatTitles()
 }
 
-function resolveChatTitle(chat: Chat, contactNames: Map<string, string>): string {
+function resolveChatTitle(chat: ProtocolChat, contactNames: Map<string, string>): string {
   const jid = chat.id ?? ''
   const stored = chat.name?.trim()
   if (stored) return stored
@@ -409,7 +408,7 @@ export function upsertGroupInfo(group: {
     .run(group.id, title, participantCount, now)
 }
 
-export function upsertChatFromBaileys(chat: Chat): void {
+export function upsertChatFromProtocol(chat: ProtocolChat): void {
   const jid = chat.id
   if (!isRenderableChatJid(jid)) return
 
@@ -449,7 +448,7 @@ export function upsertChatFromBaileys(chat: Chat): void {
     )
 }
 
-export function upsertChatsFromBaileys(chats: Chat[]): void {
+export function upsertChatsFromProtocol(chats: ProtocolChat[]): void {
   if (chats.length === 0) return
 
   const contactNames = getContactNameMap()
@@ -467,7 +466,7 @@ export function upsertChatsFromBaileys(chats: Chat[]): void {
        updated_at = excluded.updated_at`,
   )
   const now = Date.now()
-  const tx = getDb().transaction((items: Chat[]) => {
+  const tx = getDb().transaction((items: ProtocolChat[]) => {
     for (const chat of items) {
       const jid = chat.id
       if (!isRenderableChatJid(jid)) continue
@@ -524,7 +523,7 @@ function ensureChatRow(
   }
 }
 
-export function upsertMessageFromBaileys(msg: WAMessage, meId: string): MessageRecord | null {
+export function upsertMessageFromProtocol(msg: ProtocolMessage, meId: string): MessageRecord | null {
   const chatJid = resolveChatJid(msg)
   if (!isRenderableChatJid(chatJid)) return null
 
@@ -584,7 +583,7 @@ export function upsertMessageFromBaileys(msg: WAMessage, meId: string): MessageR
  *  - no per-row SELECTs, no FK fan-out
  */
 export function bulkUpsertHistoryMessages(
-  messages: WAMessage[],
+  messages: ProtocolMessage[],
   meId: string,
 ): number {
   if (messages.length === 0) return 0
@@ -1073,13 +1072,13 @@ export function getMessageFromDb(key: {
   id?: string | null
   fromMe?: boolean | null
   participant?: string | null
-}): WAMessage | undefined {
+}): ProtocolMessage | undefined {
   if (!key.remoteJid || !key.id) return undefined
   const id = `${key.remoteJid}:${key.id}:${key.fromMe ? 1 : 0}:${key.participant ?? ''}`
   const row = getDb()
     .prepare('SELECT * FROM messages WHERE id = ?')
     .get(id) as MessageRow | undefined
   if (!row) return undefined
-  // Minimal stub for Baileys getMessage — full proto not stored in Phase 2
+  // Minimal stub — full proto not stored
   return undefined
 }

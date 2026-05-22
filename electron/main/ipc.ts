@@ -7,8 +7,8 @@ import {
   logoutWhatsApp,
   retryWhatsApp,
 } from './connection-bridge'
-import { getSocket } from './baileys/client'
-import { sendTextMessage } from './baileys/send'
+import { getClient } from './whatsmeow/client'
+import { sendTextMessage } from './whatsmeow/send'
 import {
   listChatsFromDb,
   listChatsMissingAvatar,
@@ -17,7 +17,7 @@ import {
   repairGroupChatSenderNames,
   upsertGroupInfo,
 } from './db/repositories'
-import { chatJidIsGroup } from './baileys/message-utils'
+import { chatJidIsGroup } from './whatsmeow/message-utils'
 import {
   beginSync,
   getSyncProgress,
@@ -26,8 +26,8 @@ import {
   scheduleSyncIdleFallback,
 } from './sync-progress'
 import { setActiveChat } from './active-chat'
-import { queueAvatarFetches } from './baileys/avatars'
-import { hydrateContactAliasesFromPhonebook } from './baileys/contact-aliases'
+import { queueAvatarFetches } from './whatsmeow/avatars'
+import { hydrateContactAliasesFromPhonebook } from './whatsmeow/contact-aliases'
 
 interface StoredSettings extends Record<string, ChatFilter | ColorScheme> {
   chatFilter: ChatFilter
@@ -72,8 +72,8 @@ export function registerIpcHandlers() {
   ipcMain.handle(IPC_CHANNELS.chatOpen, async (_, jid: string) => {
     if (!chatJidIsGroup(jid)) return null
 
-    const sock = getSocket()
-    if (!sock) {
+    const wa = getClient()
+    if (!wa) {
       repairGroupChatSenderNames(jid)
       scheduleMessagesNotify(jid)
       scheduleChatsNotify(true)
@@ -81,19 +81,15 @@ export function registerIpcHandlers() {
     }
 
     try {
-      const meta = await sock.groupMetadata(jid)
+      const meta = await wa.getGroupInfo(jid)
       const count = meta.participants?.length ?? 0
-      upsertGroupInfo(meta)
-      void hydrateContactAliasesFromPhonebook(sock)
-      queueAvatarFetches(
-        (meta.participants ?? [])
-          .flatMap((p) => [
-            p.id,
-            'jid' in p ? (p as { jid?: string }).jid : undefined,
-            'lid' in p ? (p as { lid?: string }).lid : undefined,
-          ])
-          .filter(Boolean) as string[],
-      )
+      upsertGroupInfo({
+        id: meta.jid,
+        subject: meta.name,
+        participants: meta.participants.map((p) => ({ id: p.jid, jid: p.jid })),
+      })
+      void hydrateContactAliasesFromPhonebook(wa)
+      queueAvatarFetches(meta.participants.map((p) => p.jid))
       repairGroupChatSenderNames(jid)
       scheduleMessagesNotify(jid)
       scheduleChatsNotify(true)
@@ -120,10 +116,8 @@ export function registerIpcHandlers() {
   })
 
   ipcMain.handle(IPC_CHANNELS.syncTrigger, () => {
-    // Re-kick avatar discovery and bump the sync banner so the user gets
-    // visible feedback when they hit the refresh icon.
     queueAvatarFetches(listChatsMissingAvatar())
-    void hydrateContactAliasesFromPhonebook(getSocket())
+    void hydrateContactAliasesFromPhonebook(getClient())
     beginSync()
     scheduleSyncIdleFallback(8000)
     scheduleChatsNotify(true)

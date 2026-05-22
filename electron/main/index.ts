@@ -4,7 +4,7 @@ import path from 'node:path'
 import { initDatabase } from './db'
 import { registerIpcHandlers } from './ipc'
 import { initConnectionBridge, startWhatsApp } from './connection-bridge'
-import { registerAvatarProtocol } from './baileys/avatars'
+import { registerAvatarProtocol } from './whatsmeow/avatars'
 
 // Some Linux/Arch GPU driver stacks make Electron's GPU process fatal during
 // startup ("GPU process isn't usable"). Keep rendering on the CPU so the app

@@ -7,7 +7,7 @@ import {
   onConnectionUpdate,
   retryWhatsApp,
   startWhatsApp,
-} from './baileys/client'
+} from './whatsmeow/client'
 
 function broadcast(channel: string, ...args: unknown[]) {
   for (const win of BrowserWindow.getAllWindows()) {

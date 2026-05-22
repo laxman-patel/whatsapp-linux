@@ -73,9 +73,7 @@ export function recordHistoryChunk(stats: {
     progress = Math.min(95, progress + 2)
   }
 
-  // Best-effort total estimate from imported / progress. Baileys's `progress`
-  // is server-reported and may be approximate; we cap at messagesSynced so the
-  // counter never goes backwards.
+  // Best-effort total estimate from imported / progress.
   let estimatedTotalMessages = state.estimatedTotalMessages
   if (progress > 0 && messagesSynced > 0) {
     const estimate = Math.round((messagesSynced * 100) / progress)

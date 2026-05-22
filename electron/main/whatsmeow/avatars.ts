@@ -5,21 +5,12 @@ import crypto from 'node:crypto'
 import { getChatAvatarPath, setChatAvatarPath } from '../db/repositories'
 import { broadcast } from '../broadcast'
 import { IPC_CHANNELS } from '../../../src/shared/ipc'
-import { getSocket } from './client'
+import { getClient } from './client'
 
-// Re-export for main-side URL building (shared module is renderer-safe).
 export { avatarUrlForJid } from '../../../src/shared/avatar'
-
-/**
- * Avatar (WhatsApp profile picture) cache.
- *
- * Calls `sock.profilePictureUrl(jid)` to discover the current photo URL,
- * downloads it to disk, and serves it via the `wa-avatar://` protocol.
- */
 
 const AVATAR_FETCH_CONCURRENCY = 3
 const AVATAR_FETCH_DELAY_MS = 200
-const AVATAR_FETCH_TIMEOUT_MS = 20_000
 const queue: string[] = []
 const inFlight = new Set<string>()
 let running = 0
@@ -37,7 +28,6 @@ export function avatarFilePath(jid: string): string {
 function parseJidFromRequest(url: string): string | null {
   try {
     const parsed = new URL(url)
-    // wa-avatar://d/<encoded-jid>
     const encoded = parsed.pathname.replace(/^\/+/, '')
     if (!encoded) return null
     return decodeURIComponent(encoded)
@@ -81,20 +71,6 @@ export function registerAvatarProtocol(): void {
       return new Response('Error', { status: 500 })
     }
   })
-}
-
-export async function hydrateAvatarCacheFromDisk(): Promise<void> {
-  try {
-    const dir = avatarDir()
-    const files = await fs.readdir(dir)
-    for (const file of files) {
-      if (!file.endsWith('.jpg')) continue
-      // Files are keyed by sha1(jid); DB rows are reconciled on next successful fetch.
-      void file
-    }
-  } catch {
-    /* no cache dir yet */
-  }
 }
 
 export function queueAvatarFetches(jids: string[]): void {
@@ -147,8 +123,8 @@ async function fileExists(filePath: string): Promise<boolean> {
 }
 
 async function fetchOne(jid: string): Promise<void> {
-  const sock = getSocket()
-  if (!sock) return
+  const wa = getClient()
+  if (!wa) return
 
   const filePath = avatarFilePath(jid)
   if (await fileExists(filePath)) {
@@ -158,13 +134,11 @@ async function fetchOne(jid: string): Promise<void> {
   }
 
   let url: string | undefined
-  for (const type of ['image', 'preview'] as const) {
-    try {
-      url = await sock.profilePictureUrl(jid, type, AVATAR_FETCH_TIMEOUT_MS)
-      if (url) break
-    } catch {
-      /* try next size / privacy block */
-    }
+  try {
+    const pic = await wa.getProfilePicture(jid)
+    url = pic.url
+  } catch {
+    return
   }
   if (!url) return
 
